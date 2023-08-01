@@ -68,6 +68,22 @@
 /* Human68k structures                                                      */
 /****************************************************************************/
 
+/* Device driver request header */
+
+struct reqh {
+  uint8_t magic;       // +0x00.b  Constant (26)
+  uint8_t unit;        // +0x01.b  Unit number
+  uint8_t command;     // +0x02.b  Command code
+  uint8_t errl;        // +0x03.b  Error code low
+  uint8_t errh;        // +0x04.b  Error code high
+  uint8_t reserved[8]; // +0x05 .. +0x0c  not used
+  uint8_t attr;        // +0x0d.b  Attribute / Seek mode
+  void *addr;          // +0x0e.l  Buffer address
+  uint32_t status;     // +0x12.l  Bytes / Buffer / Result status
+  void *fcb;           // +0x16.l  FCB
+} __attribute__((packed, aligned(2)));
+
+
 #if 0
 struct HfsFilesbuf {
   uint8_t searchatr;

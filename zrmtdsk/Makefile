@@ -5,7 +5,7 @@ LD = $(CROSS)gcc
 AR = $(CROSS)ar
 RANLIB = $(CROSS)ranlib
 
-CFLAGS = -m68000 -I. -O3
+CFLAGS = -m68000 -I. -I../include -O3
 ASFLAGS = -m68000 -I.
 
 all: zrmtdsk.sys
@@ -13,7 +13,7 @@ all: zrmtdsk.sys
 zrmtdsk.sys: head.o zrmtdsk.o
 	$(LD) -o $@ $^ -nostartfiles
 
-zrmtdsk.o: zrmtdsk.h
+zrmtdsk.o: ../include/x68kremote.h
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $<

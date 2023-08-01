@@ -31,7 +31,7 @@
 #include <x68k/dos.h>
 #include <x68k/iocs.h>
 #include <setjmp.h>
-#include "zrmtdsk.h"
+#include "x68kremote.h"
 
 //#define DEBUG
 
@@ -333,8 +333,8 @@ void interrupt(void)
     namests((struct dos_namestbuf *)r->status);
     struct rename f;
     f.command = r->command;
-    memcpy(&f.pathold, r->addr, sizeof(struct dos_namestbuf));
-    memcpy(&f.pathnew, (void *)r->status, sizeof(struct dos_namestbuf));
+    memcpy(&f.pathOld, r->addr, sizeof(struct dos_namestbuf));
+    memcpy(&f.pathNew, (void *)r->status, sizeof(struct dos_namestbuf));
     serout(&f, sizeof(f));
 
     struct dirop_res fr;
@@ -360,13 +360,13 @@ void interrupt(void)
   case 0x46: /* getsetattr */
   {
 //        namests((struct dos_namestbuf *)r->addr);
-    struct getsetattr f;
+    struct chmod f;
     f.command = r->command;
     f.attr = r->attr;
     memcpy(&f.path, r->addr, sizeof(struct dos_namestbuf));
     serout(&f, sizeof(f));
 
-    struct getsetattr_res fr;
+    struct chmod_res fr;
     serin(&fr, sizeof(fr));
     r->status = fr.res;
     debugf("attr: %02x res %d\r\n", r->attr, r->status);
