@@ -798,7 +798,7 @@ void op_files(int fd, char *buf)
     {
       int f = 0x20;  //0x00=次のバイトはSJISの2バイト目,0x20=次のバイトはSJISの2バイト目ではない
       int i;
-      for (i = 0; i <= 20; i++) {
+      for (i = 0; i < 21; i++) {
         int c = w2[i];
         int d = w[i];
         if (d != '?' && ('A' <= c && c <= 'Z' ? c | f : c) != d) {  //検索するファイル名の'?'以外の部分がマッチしない。SJISの2バイト目でなければ小文字化してから比較する
@@ -806,7 +806,7 @@ void op_files(int fd, char *buf)
         }
         f = f != 0x00 && (0x81 <= c && c <= 0x9f || 0xe0 <= c && c <= 0xef) ? 0x00 : 0x20;  //このバイトがSJISの2バイト目ではなくてSJISの1バイト目ならば次のバイトはSJISの2バイト目
       }
-      if (i < 20) { //ファイル名がマッチしなかった
+      if (i < 21) { //ファイル名がマッチしなかった
         continue;
       }
     }
