@@ -1224,8 +1224,8 @@ void op_dskfre(int fd, char *buf)
   free = free > 0x7fffffff ? 0x7fffffff : free;
   res.freeclu = htobe16(free / 32768);
   res.totalclu = htobe16(total /32768);
-  res.clusect = htobe16(64);
-  res.sectsize = htobe16(512);
+  res.clusect = htobe16(128);
+  res.sectsize = htobe16(1024);
   res.res = htobe32(free);
 
   DPRINTF1("DSKFRE: free=%u total=%u clusect=%u sectsz=%u res=%d\n", be16toh(res.freeclu), be16toh(res.totalclu), be16toh(res.clusect), be16toh(res.sectsize), be32toh(res.res));
