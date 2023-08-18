@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Yuichi Nakamura
+ * Copyright (c) 2023 Yuichi Nakamura (@yunkya2)
  *
  * The MIT License (MIT)
  *
@@ -254,6 +254,7 @@ static void conv_statinfo(struct stat *st, void *v)
 }
 
 // namestsのパスをホストのパスに変換する
+// (derived from HFS.java by Makoto Kamada)
 static int conv_namebuf(dos_namebuf *ns, bool full, hostpath_t *path)
 {
   uint8_t bb[88];   // SJISでのパス名
@@ -631,6 +632,7 @@ void op_files(int fd, char *buf)
   }
   isroot = strcmp(cmd->path.path, "\t") == 0;   /* TBD */
 
+  // (derived from HFS.java by Makoto Kamada)
   //検索するファイル名の順序を入れ替える
   //  主ファイル名1の末尾が'?'で主ファイル名2の先頭が'\0'のときは主ファイル名2を'?'で充填する
   uint8_t w[21] = { 0 };
@@ -1245,7 +1247,7 @@ int main(int argc, char **argv)
     return 1;
   }
 
-  printf("X68000 Serial Remote Drive Server (version %s)\n", GIT_REPO_VERSION);
+  printf("X68000 Serial Remote Drive Service (version %s)\n", GIT_REPO_VERSION);
 
   while (1) {
     uint8_t buf[1024];
