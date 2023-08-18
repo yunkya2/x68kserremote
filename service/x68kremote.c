@@ -112,13 +112,15 @@ int serout(int fd, void *buf, size_t len)
       write(fd, buf, len) < 0) {
     return -1;
   }
-  DPRINTF2("send %d bytes\n", len);
+  DPRINTF3("%02X %02X %02X %02X ", 'Z', 'Z', 'Z', 'X');
+  DPRINTF3("%02X %02X\n", lenbuf[0], lenbuf[1]);
   for (int i = 0; i < len; i++) {
     if ((i % 16) == 0) DPRINTF3("%03X: ", i);
     DPRINTF3("%02X ", ((uint8_t *)buf)[i]);
     if ((i % 16) == 15) DPRINTF3("\n");
   }
   DPRINTF3("\n");
+  DPRINTF2("send %d bytes\n", len);
 }
 
 int serin(int fd, void *buf, size_t len)
@@ -129,9 +131,11 @@ int serin(int fd, void *buf, size_t len)
   // 同期バイトをチェック:  ZZZ...ZZZX でデータ転送開始
   do { 
     l = read(fd, &c, 1);
+    DPRINTF3("%02X %d ", c, l);
   } while (l < 1 || c != 'Z');
   do {
     l = read(fd, &c, 1);
+    DPRINTF3("%02X ", c);
   } while (l < 1 || c == 'Z');
   if (c != 'X') {
     return -1;
@@ -140,12 +144,15 @@ int serin(int fd, void *buf, size_t len)
   // データサイズを取得
   size_t size;
   l = read(fd, &c, 1);
+  DPRINTF3("%02X ", c);
   size = c << 8;
   l = read(fd, &c, 1);
+  DPRINTF3("%02X ", c);
   size += c;
   if (size > len) {
     return -1;
   }
+  DPRINTF3("\n");
 
   // データを読み込み
   uint8_t *p = buf;
@@ -155,13 +162,13 @@ int serin(int fd, void *buf, size_t len)
     s -= l;
   }
 
-  DPRINTF2("recv %d bytes\n", size);
   for (int i = 0; i < size; i++) {
     if ((i % 16) == 0) DPRINTF3("%03X: ", i);
     DPRINTF3("%02X ", ((uint8_t *)buf)[i]);
     if ((i % 16) == 15) DPRINTF3("\n");
   }
   DPRINTF3("\n");
+  DPRINTF2("recv %d bytes\n", size);
   return 0;
 }
 
@@ -206,21 +213,34 @@ int seropen(char *port, int baudrate)
   /* Windows API */
   HANDLE hComm = (HANDLE)_get_osfhandle(fd);
 
-  DCB lpDCB;
-  if (!GetCommState(hComm, &lpDCB)) {
+  DCB dcb;
+  if (!GetCommState(hComm, &dcb)) {
     return -1;
   }
-  lpDCB.BaudRate = baudrate;
-  lpDCB.ByteSize = 8;
-  lpDCB.Parity = NOPARITY;
-  lpDCB.StopBits = ONESTOPBIT;
-  lpDCB.fOutxCtsFlow = 0;
-  lpDCB.fOutxDsrFlow = 0;
-  lpDCB.fDtrControl = 0;
-  lpDCB.fOutX = 0;
-  lpDCB.fInX = 0;
-  lpDCB.fRtsControl = 0;
-  if (!SetCommState(hComm, &lpDCB)) {
+  dcb.BaudRate = baudrate;
+  dcb.ByteSize = 8;
+  dcb.StopBits = ONESTOPBIT;
+  dcb.Parity = NOPARITY;
+  dcb.fBinary = TRUE;
+  dcb.EofChar = 0;
+  dcb.fNull = FALSE;
+  dcb.fParity = FALSE;
+  dcb.fErrorChar = FALSE;
+  dcb.ErrorChar = 0;
+  dcb.fTXContinueOnXoff = TRUE;
+  dcb.fOutX = FALSE;
+  dcb.fInX = FALSE;
+  dcb.fOutxDsrFlow = FALSE;
+  dcb.fOutxCtsFlow = FALSE;
+  dcb.fRtsControl = 0;
+  dcb.fDtrControl = 0;
+  if (!SetCommState(hComm, &dcb)) {
+    return -1;
+  }
+  COMMTIMEOUTS timeout = {
+    MAXDWORD, MAXDWORD, MAXDWORD - 1, 0, 0
+  };
+  if (!SetCommTimeouts(hComm, &timeout)) {
     return -1;
   }
 #endif
