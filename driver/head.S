@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Yuichi Nakamura
+ * Copyright (c) 2023 Yuichi Nakamura (@yunkya2)
  *
  * The MIT License (MIT)
  *

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Yuichi Nakamura
+ * Copyright (c) 2023 Yuichi Nakamura (@yunkya2)
  *
  * The MIT License (MIT)
  *
@@ -33,7 +33,7 @@
 #include <setjmp.h>
 #include "x68kremote.h"
 
-#define DEBUG
+//#define DEBUG
 
 //****************************************************************************
 // Global variables
@@ -450,7 +450,7 @@ void interrupt(void)
     serin(&res, sizeof(res));
     memcpy(&fb->atr, &res.file.atr, sizeof(res.file) - 1);
     req->status = res.res;
-    DPRINTF("NFILES: filep=0x%08x -> %d %s %d\r\n", cmd.filep, res.res, res.file.name);
+    DPRINTF("NFILES: filep=0x%08x -> %d %s\r\n", cmd.filep, res.res, res.file.name);
     break;
   }
 
