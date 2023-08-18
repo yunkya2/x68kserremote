@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Yuichi Nakamura
+ * Copyright (c) 2023 Yuichi Nakamura (@yunkya2)
  *
  * The MIT License (MIT)
  *
@@ -27,50 +27,67 @@
 
 #include <stdint.h>
 
-/****************************************************************************/
-/* Human68k error code                                                      */
-/****************************************************************************/
-#define DOS_INVALID_FUNCTION       -1 //無効なファンクションコード
-#define DOS_FILE_NOT_FOUND         -2 //ファイルが見つからない
-#define DOS_DIRECTORY_NOT_FOUND    -3 //ディレクトリが見つからない
-#define DOS_TOO_MANY_HANDLES       -4 //オープンしているファイルが多すぎる
-#define DOS_NOT_A_FILE             -5 //ディレクトリやボリュームラベルをアクセスしようとした
-#define DOS_HANDLE_IS_NOT_OPENED   -6 //指定したハンドラがオープンされていない
-#define DOS_BROKEN_MEMORY_CHAIN    -7 //メモリ管理領域が壊れている(実際に-7が返されることはない)
-#define DOS_NOT_ENOUGH_MEMORY      -8 //メモリが足りない
-#define DOS_INVALID_MEMORY_CHAIN   -9 //無効なメモリ管理テーブルを指定した
-#define DOS_INVALID_ENVIRONMENT   -10 //不正な環境を指定した(実際に-10が返されることはない)
-#define DOS_ABNORMAL_X_FILE       -11 //実行ファイルのフォーマットが異常
-#define DOS_INVALID_ACCESS_MODE   -12 //オープンのアクセスモードが異常
-#define DOS_ILLEGAL_FILE_NAME     -13 //ファイル名の指定が間違っている
-#define DOS_INVALID_PARAMETER     -14 //パラメータが無効
-#define DOS_ILLEGAL_DRIVE_NUMBER  -15 //ドライブの指定が間違っている
-#define DOS_CURRENT_DIRECTORY     -16 //カレントディレクトリを削除しようとした
-#define DOS_CANNOT_IOCTRL         -17 //_IOCTRLできないデバイス
-#define DOS_NO_MORE_FILES         -18 //該当するファイルがもうない(_FILES,_NFILES)
-#define DOS_CANNOT_WRITE          -19 //ファイルに書き込めない(主に属性R,Sのファイルに対する書き込みや削除)
-#define DOS_DIRECTORY_EXISTS      -20 //同一名のディレクトリを作ろうとした
-#define DOS_RM_NONEMPTY_DIRECTORY -21 //空でないディレクトリを削除しようとした
-#define DOS_MV_NONEMPTY_DIRECTORY -22 //空でないディレクトリを移動しようとした
-#define DOS_DISK_FULL             -23 //ディスクフル
-#define DOS_DIRECTORY_FULL        -24 //ディレクトリフル
-#define DOS_SEEK_OVER_EOF         -25 //EOFを越えてシークしようとした
-#define DOS_ALREADY_SUPERVISOR    -26 //既にスーパーバイザ状態になっている
-#define DOS_THREAD_EXISTS         -27 //同じスレッド名が存在する
-#define DOS_COMMUNICATION_FAILED  -28 //スレッド間通信バッファに書き込めない(ビジーまたはオーバーフロー)
-#define DOS_TOO_MANY_THREADS      -29 //これ以上バックグラウンドでスレッドを起動できない
-#define DOS_NOT_ENOUGH_LOCK_AREA  -32 //ロック領域が足りない
-#define DOS_FILE_IS_LOCKED        -33 //ロックされていてアクセスできない
-#define DOS_OPENED_HANDLE_EXISTS  -34 //指定のドライブはハンドラがオープンされている
-#define DOS_FILE_EXISTS           -80 //ファイルが存在している(_NEWFILE,_MAKETMP)
+//****************************************************************************
+// unaligned big-endian variable
+//****************************************************************************
 
-/****************************************************************************/
-/* Human68k structures                                                      */
-/****************************************************************************/
+typedef uint8_t uabe16_t[2];
+typedef uint8_t uabe32_t[4];
 
-/* Device driver request header */
+#define get_uabe16(x)       (((x)[0] << 8) | ((x)[1]))
+#define get_uabe32(x)       (((x)[0] << 24) | ((x)[1] << 16) | ((x)[2] << 8) | ((x)[3]))
+#define set_uabe16(x, v)    do { (x)[0] = ((v) >> 8) & 0xff; \
+                                 (x)[1] = (v) & 0xff; } while (0)
+#define set_uabe32(x, v)    do { (x)[0] = ((v) >> 24) & 0xff; \
+                                 (x)[1] = ((v) >> 16) & 0xff; \
+                                 (x)[2] = ((v) >> 8) & 0xff; \
+                                 (x)[3] = (v) & 0xff; } while (0)
 
-struct reqh {
+//****************************************************************************
+// Human68k error code
+//****************************************************************************
+#ifndef _DOSE_ILGFNC
+#define _DOSE_ILGFNC    -1
+#define _DOSE_NOENT     -2
+#define _DOSE_NODIR     -3
+#define _DOSE_MFILE     -4
+#define _DOSE_ISDIR     -5
+#define _DOSE_BADF      -6
+#define _DOSE_BROKNMEM  -7
+#define _DOSE_NOMEM     -8
+#define _DOSE_ILGMPTR   -9
+#define _DOSE_ILGENV    -10
+#define _DOSE_ILGFMT    -11
+#define _DOSE_ILGARG    -12
+#define _DOSE_ILGFNAME  -13
+#define _DOSE_ILGPARM   -14
+#define _DOSE_ILGDRV    -15
+#define _DOSE_ISCURDIR  -16
+#define _DOSE_CANTIOC   -17
+#define _DOSE_NOMORE    -18
+#define _DOSE_RDONLY    -19
+#define _DOSE_EXISTDIR  -20
+#define _DOSE_NOTEMPTY  -21
+#define _DOSE_CANTREN   -22
+#define _DOSE_DISKFULL  -23
+#define _DOSE_DIRFULL   -24
+#define _DOSE_CANTSEEK  -25
+#define _DOSE_SUPER     -26
+#define _DOSE_DUPTHNAM  -27
+#define _DOSE_CANTSEND  -28
+#define _DOSE_THFULL    -29
+#define _DOSE_LCKFULL   -32
+#define _DOSE_LCKERR    -33
+#define _DOSE_BUSYDRV   -34
+#define _DOSE_SYMLOOP   -35
+#define _DOSE_EXISTFILE -80
+#endif
+
+//****************************************************************************
+// Human68k structures
+//****************************************************************************
+
+struct dos_req_header {
   uint8_t magic;       // +0x00.b  Constant (26)
   uint8_t unit;        // +0x01.b  Unit number
   uint8_t command;     // +0x02.b  Command code
@@ -83,26 +100,7 @@ struct reqh {
   void *fcb;           // +0x16.l  FCB
 } __attribute__((packed, aligned(2)));
 
-
-#if 0
-struct HfsFilesbuf {
-  uint8_t searchatr;
-  uint8_t driveno;
-  uint32_t dirsec;
-  uint16_t dirlft;
-  uint16_t dirpos;
-  char filename[8];
-  char ext[3];
-  uint8_t atr;
-  uint16_t time;
-  uint16_t date;
-  uint32_t filelen;
-  char name[23];
-} __attribute__((packed, aligned(2)));
-typedef struct HfsFilesbuf HfsFilesbuf;
-#endif
-
-struct HfsFilesinfo {
+struct dos_filesinfo {
   uint8_t dummy;
   uint8_t atr;
   uint16_t time;
@@ -110,169 +108,153 @@ struct HfsFilesinfo {
   uint32_t filelen;
   char name[23];
 } __attribute__((packed, aligned(2)));
-typedef struct HfsFilesinfo HfsFilesinfo;
 
-typedef struct HfsNamests {     // namests 形式パス名
-  uint8_t flag;       //  0   フラグまたはパスの長さ
-  uint8_t drive;      //  1   内部ドライブ番号(0=A:)
-  uint8_t path[65];   //  2   パス(区切りは'\'または$09)
-  uint8_t name1[8];   // 67   ファイル名1
-  uint8_t ext[3];     // 75   拡張子
-  uint8_t name2[10];  // 78   ファイル名2
-} HfsNamests;         // 88 bytes
-typedef struct HfsNamests HfsNamests;
+typedef struct {
+  uint8_t flag;
+  uint8_t drive;
+  uint8_t path[65];
+  uint8_t name1[8];
+  uint8_t ext[3];
+  uint8_t name2[10];
+} dos_namebuf;
 
-/****************************************************************************/
-/* ZRMTDSK serial communication protocol defintion                          */
-/****************************************************************************/
+//****************************************************************************
+// ZRMTDSK serial communication protocol definition
+//****************************************************************************
 
-struct dirop {
+struct cmd_dirop {
   uint8_t command;
-  HfsNamests path;
-};
-struct dirop_res {
+  dos_namebuf path;
+} __attribute__((packed, aligned(2)));
+struct res_dirop {
   int8_t res;
-};
+} __attribute__((packed, aligned(2)));
 
-struct rename {
+struct cmd_rename {
   uint8_t command;
-  HfsNamests pathOld;
-  HfsNamests pathNew;
-};
-struct rename_res {
+  dos_namebuf path_old;
+  dos_namebuf path_new;
+} __attribute__((packed, aligned(2)));
+struct res_rename {
   int8_t res;
-};
+} __attribute__((packed, aligned(2)));
 
-struct chmod {
+struct cmd_chmod {
   uint8_t command;
   uint8_t attr;
-  HfsNamests path;
-};
-struct chmod_res {
+  dos_namebuf path;
+} __attribute__((packed, aligned(2)));
+struct res_chmod {
   int8_t res;
-};
+} __attribute__((packed, aligned(2)));
 
-struct files {
+struct cmd_files {
   uint8_t command;
   uint8_t attr;
-  uint8_t dummy[2];
   uint32_t filep;
-  HfsNamests path;
-};
-struct files_res {
+  dos_namebuf path;
+} __attribute__((packed, aligned(2)));
+struct res_files {
   int8_t res;
-  HfsFilesinfo file;
-};
+  struct dos_filesinfo file;
+} __attribute__((packed, aligned(2)));
 
-struct nfiles {
+struct cmd_nfiles {
   uint8_t command;
-  uint8_t dummy[3];
   uint32_t filep;
-};
-struct nfiles_res {
+} __attribute__((packed, aligned(2)));
+struct res_nfiles {
   int8_t res;
-  HfsFilesinfo file;
-};
+  struct dos_filesinfo file;
+} __attribute__((packed, aligned(2)));
 
-struct create {
+struct cmd_create {
   uint8_t command;
   uint8_t attr;
   uint8_t mode;
-  uint8_t dummy;
-  uint32_t fcbp;
-  HfsNamests path;
-  uint8_t fcb[68];
-};
-struct create_res {
-  int8_t res;
-  uint8_t fcb[68];
-};
-
-struct open {
-  uint8_t command;
-  uint8_t dummy[3];
-  uint32_t fcbp;
-  HfsNamests path;
-  uint8_t fcb[68];
-};
-struct open_res {
-  int8_t res;
-  uint8_t fcb[68];
-};
-
-struct close {
-  uint8_t command;
-  uint8_t dummy[3];
   uint32_t fcb;
-};
-struct close_res {
+  dos_namebuf path;
+} __attribute__((packed, aligned(2)));
+struct res_create {
   int8_t res;
-};
+} __attribute__((packed, aligned(2)));
 
-struct read {
+struct cmd_open {
   uint8_t command;
-  uint8_t dummy[3];
+  uint8_t mode;
+  uint32_t fcb;
+  dos_namebuf path;
+} __attribute__((packed, aligned(2)));
+struct res_open {
+  int8_t res;
+  uint32_t size;
+} __attribute__((packed, aligned(2)));
+
+struct cmd_close {
+  uint8_t command;
+  uint32_t fcb;
+} __attribute__((packed, aligned(2)));
+struct res_close {
+  int8_t res;
+} __attribute__((packed, aligned(2)));
+
+struct cmd_read {
+  uint8_t command;
   uint32_t fcb;
   uint32_t len;
-};
-struct read_res {
-  uint16_t len;
+} __attribute__((packed, aligned(2)));
+struct cmd_read_ack {
+  uint8_t ack;
+} __attribute__((packed, aligned(2)));
+struct res_read {
+  int16_t len;
   uint8_t data[1024];
-};
+} __attribute__((packed, aligned(2)));
 
-struct write {
+struct cmd_write {
   uint8_t command;
-  uint8_t dummy[3];
   uint32_t fcb;
   uint32_t len;
-};
-struct write1 {
-  uint16_t len;
+} __attribute__((packed, aligned(2)));
+struct cmd_write_body {
+  int16_t len;
   uint8_t data[1024];
-};
-struct write_res {
-  uint16_t len;
-};
+} __attribute__((packed, aligned(2)));
+struct res_write {
+  int16_t len;
+} __attribute__((packed, aligned(2)));
 
-struct seek {
+struct cmd_seek {
   uint8_t command;
   uint8_t whence;
-  uint8_t dummy[2];
   uint32_t fcb;
   int32_t offset;
-};
-struct seek_res {
+} __attribute__((packed, aligned(2)));
+struct res_seek {
   int8_t res;
-  uint8_t dummy[3];
   uint32_t pos;
-};
+} __attribute__((packed, aligned(2)));
 
-struct filedate
-{
+struct cmd_filedate {
   uint8_t command;
-  uint8_t dummy[3];
   uint32_t fcb;
   uint16_t time;
   uint16_t date;
-};
-struct filedate_res
-{
+} __attribute__((packed, aligned(2)));
+struct res_filedate {
   uint16_t time;
   uint16_t date;
-};
+} __attribute__((packed, aligned(2)));
 
-struct dskfre
-{
+struct cmd_dskfre {
   uint8_t command;
-};
-struct dskfre_res
-{
-  uint32_t res;
+} __attribute__((packed, aligned(2)));
+struct res_dskfre {
+  int32_t res;
   uint16_t freeclu;
   uint16_t totalclu;
   uint16_t clusect;
   uint16_t sectsize;
-};
-
+} __attribute__((packed, aligned(2)));
 
 #endif /* _X68KREMOTE_H_ */
