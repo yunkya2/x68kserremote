@@ -1,4 +1,6 @@
-CFLAGS = -I. -I../include -O
+GIT_REPO_VERSION=$(shell git describe --tags --always)
+
+CFLAGS = -I. -I../include -O -DGIT_REPO_VERSION=\"$(GIT_REPO_VERSION)\"
 
 all: zrmtser
 
