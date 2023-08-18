@@ -44,9 +44,17 @@ jmp_buf jenv;           //タイムアウト時のジャンプ先
 bool recovery = false;  //エラー回復モードフラグ
 int timeout = 500;      //コマンド受信タイムアウト(3sec)
 
+#ifdef DEBUG
+int debuglevel = 0;
+#endif
+
 //****************************************************************************
 // for debugging
 //****************************************************************************
+
+#define DPRINTF1(...)  DPRINTF(1, __VA_ARGS__)
+#define DPRINTF2(...)  DPRINTF(2, __VA_ARGS__)
+#define DPRINTF3(...)  DPRINTF(3, __VA_ARGS__)
 
 #ifdef DEBUG
 char heap[1024];                // temporary heap for debug print
@@ -54,10 +62,13 @@ void *_HSTA = heap;
 void *_HEND = heap + 1024;
 void *_PSP;
 
-void DPRINTF(char *fmt, ...)
+void DPRINTF(int level, char *fmt, ...)
 {
   char buf[256];
   va_list ap;
+
+  if (debuglevel < level)
+    return;
 
   va_start(ap, fmt);
   vsiprintf(buf, fmt, ap);
@@ -69,16 +80,16 @@ void DNAMEPRINT(void *n, bool full, char *head)
 {
   struct dos_namestbuf *b = (struct dos_namestbuf *)n;
 
-  DPRINTF("%s%c:", head, b->drive + 'A');
+  DPRINTF1("%s%c:", head, b->drive + 'A');
   for (int i = 0; i < 65 && b->path[i]; i++) {
-      DPRINTF("%c", (uint8_t)b->path[i] == 9 ? '\\' : (uint8_t)b->path[i]);
+      DPRINTF1("%c", (uint8_t)b->path[i] == 9 ? '\\' : (uint8_t)b->path[i]);
   }
   if (full)
-    DPRINTF("%.8s%.10s.%.3s", b->name1, b->name2, b->ext);
+    DPRINTF1("%.8s%.10s.%.3s", b->name1, b->name2, b->ext);
 }
 
 #else
-#define DPRINTF(fmt, ...)
+#define DPRINTF(...)
 #define DNAMEPRINT(n, full, head)
 #endif
 
@@ -91,6 +102,7 @@ void out232c(uint8_t c)
   while (_iocs_osns232c() == 0)
     ;
   _iocs_out232c(c);
+  DPRINTF3("%02X ", c);
 }
 
 void serout(void *buf, size_t len)
@@ -101,7 +113,7 @@ void serout(void *buf, size_t len)
     // エラー状態からの回復
     // パケットサイズ以上の同期バイトを送ってサーバ側をコマンド受信待ち状態に戻す
     // その間に受信したデータはすべて捨てる
-    DPRINTF("error recovery\r\n");
+    DPRINTF1("error recovery\r\n");
     for (int i = 0; i < 1030; i++) {
       if (_iocs_isns232c()) {
         _iocs_inp232c();
@@ -118,9 +130,14 @@ void serout(void *buf, size_t len)
   out232c('X');
   out232c(len >> 8);
   out232c(len & 0xff);
-  for (size_t s = len; s > 0; s--) {
+  DPRINTF3("\r\n");
+  for (int i = 0; i < len; i++) {
+    if ((i % 16) == 0) DPRINTF3("%03X: ", i);
     out232c(*p++);
+    if ((i % 16) == 15) DPRINTF3("\r\n");
   }
+  DPRINTF3("\r\n");
+  DPRINTF2("send %d bytes\r\n", len);
 }
 
 int inp232c(void)
@@ -136,7 +153,9 @@ int inp232c(void)
     if (((tim.sec - sec) % 8640000) > timeout)
       longjmp(jenv, -1);
   }
-  return _iocs_inp232c() & 0xff;
+  int c = _iocs_inp232c() & 0xff;
+  DPRINTF3("%02X ", c);
+  return c;
 }
 
 void serin(void *buf, size_t len)
@@ -159,14 +178,19 @@ void serin(void *buf, size_t len)
   // データサイズを取得
   size = inp232c() << 8;
   size += inp232c();
+  DPRINTF3("\r\n");
   if (size > len) {
     longjmp(jenv, -1);
   }
 
   // データを読み込み
-  for (size_t s = size; s > 0; s--) {
+  for (int i = 0; i < size; i++) {
+    if ((i % 16) == 0) DPRINTF3("%03X: ", i);
     *p++ = inp232c();
+    if ((i % 16) == 15) DPRINTF3("\r\n");
   }
+  DPRINTF3("\r\n");
+  DPRINTF2("recv %d bytes\r\n", size);
 }
 
 //****************************************************************************
@@ -181,7 +205,7 @@ ssize_t send_read(uint32_t fcb, char *buf, size_t len)
   cmd.len = len;
   serout(&cmd, sizeof(cmd));
 
-  DPRINTF(" read: addr=0x%08x len=%d\r\n", (uint32_t)buf, len);  
+  DPRINTF1(" read: addr=0x%08x len=%d\r\n", (uint32_t)buf, len);  
 
   struct res_read res;
   struct cmd_read_ack ack = { .ack = 0 };
@@ -189,7 +213,7 @@ ssize_t send_read(uint32_t fcb, char *buf, size_t len)
   ssize_t total = 0;
   while (1) {
     serin(&res, sizeof(res));
-    DPRINTF(" read: len=%d\r\n", res.len);
+    DPRINTF1(" read: len=%d\r\n", res.len);
     if (res.len < 0)
       return res.len;
     if (res.len == 0)
@@ -199,7 +223,7 @@ ssize_t send_read(uint32_t fcb, char *buf, size_t len)
     total += res.len;
     serout(&ack, sizeof(ack));
   }
-  DPRINTF(" read: total=%d\r\n", total);
+  DPRINTF1(" read: total=%d\r\n", total);
   return total;
 }
 
@@ -211,7 +235,7 @@ ssize_t send_write(uint32_t fcb, char *buf, size_t len)
   cmd.len = len;
   serout(&cmd, sizeof(cmd));
 
-  DPRINTF(" write: addr=0x%08x len=%d\r\n", (uint32_t)buf, len);  
+  DPRINTF1(" write: addr=0x%08x len=%d\r\n", (uint32_t)buf, len);  
 
   struct cmd_write_body body;
   struct res_write res;
@@ -225,7 +249,7 @@ ssize_t send_write(uint32_t fcb, char *buf, size_t len)
     body.len = s;
     serout(&body, s + 2);
     serin(&res, sizeof(res));
-    DPRINTF(" write: len=%d -> %d\r\n", s, res.len);
+    DPRINTF1(" write: len=%d -> %d\r\n", s, res.len);
      if (res.len < 0)
       break;
     ptr += res.len;
@@ -234,7 +258,7 @@ ssize_t send_write(uint32_t fcb, char *buf, size_t len)
   }
   if (res.len < 0)
     total = res.len;
-  DPRINTF(" write: total=%d\r\n", total);
+  DPRINTF1(" write: total=%d\r\n", total);
   return total;
 }
 
@@ -271,13 +295,15 @@ void interrupt(void)
   struct dos_req_header *req = reqheader;
 
   if (setjmp(jenv)) {
-    DPRINTF("command timeout\r\n");
+    DPRINTF1("command timeout\r\n");
     req->errh = 0x10;
     req->errl = 0x02;
     req->status = -1;
     recovery = true;
     return;
   }
+
+  DPRINTF2("----Command: 0x%02x\r\n", req->command);
 
   switch ((req->command) & 0x7f) {
   case 0x40: /* init */
@@ -287,15 +313,23 @@ void interrupt(void)
     _dos_print(")\r\n");
 
     int baudrate = 38400;
+    char *baudstr = "38400";
     char *p = (char *)req->status;
     p += strlen(p) + 1;
-    if (*p != '\0') {
-      baudrate = 0;
-      for (char *q = p; *q >= '0' && *q <= '9'; q++) {
-        baudrate = baudrate * 10 + *q - '0';
+    while (*p != '\0') {
+#ifdef DEBUG
+      if (strcmp(p, "/D") == 0) {
+        debuglevel++;
+      } else
+#endif
+      if (*p >= '0' && *p <= '9') {
+        baudrate = 0;
+        baudstr = p;
+        for (char *q = p; *q >= '0' && *q <= '9'; q++) {
+          baudrate = baudrate * 10 + *q - '0';
+        }
       }
-    } else {
-      p = "38400";
+      p += strlen(p) + 1;
     }
 
     static const int bauddef[] = { 75, 150, 300, 600, 1200, 2400, 4800, 9600, 19200, 38400 };
@@ -308,14 +342,15 @@ void interrupt(void)
     }
     if (bdset < 0) {
       bdset = 9;
-      p = "38400";
+      baudstr = "38400";
     }
 
     _dos_print("ドライブ");
     _dos_putchar('A' + *(char *)&req->fcb);
     _dos_print(":でRS-232Cに接続したリモートドライブが利用可能です (");
-    _dos_print(p);
+    _dos_print(baudstr);
     _dos_print("bps)\r\n");
+    DPRINTF1("Debug level: %d\r\n", debuglevel);
 
     extern char _end;
     req->attr = 1; /* Number of units */
@@ -337,7 +372,7 @@ void interrupt(void)
     serin(&res, sizeof(res));
     req->status = res.res;
     DNAMEPRINT(req->addr, false, "CHDIR: ");
-    DPRINTF(" -> %d\r\n", res.res);
+    DPRINTF1(" -> %d\r\n", res.res);
     break;
   }
 
@@ -352,7 +387,7 @@ void interrupt(void)
     serin(&res, sizeof(res));
     req->status = res.res;
     DNAMEPRINT(req->addr, true, "MKDIR: ");
-    DPRINTF(" -> %d\r\n", res.res);
+    DPRINTF1(" -> %d\r\n", res.res);
     break;
   }
 
@@ -367,7 +402,7 @@ void interrupt(void)
     serin(&res, sizeof(res));
     req->status = res.res;
     DNAMEPRINT(req->addr, true, "RMDIR: ");
-    DPRINTF(" -> %d\r\n", res.res);
+    DPRINTF1(" -> %d\r\n", res.res);
     break;
   }
 
@@ -383,7 +418,7 @@ void interrupt(void)
     serin(&res, sizeof(res));
     DNAMEPRINT(req->addr, true, "RENAME: ");
     DNAMEPRINT((void *)req->status, true, " to ");
-    DPRINTF(" -> %d\r\n", res.res);
+    DPRINTF1(" -> %d\r\n", res.res);
     req->status = res.res;
     break;
   }
@@ -399,7 +434,7 @@ void interrupt(void)
     serin(&res, sizeof(res));
     req->status = res.res;
     DNAMEPRINT(req->addr, true, "DELETE: ");
-    DPRINTF(" -> %d\r\n", res.res);
+    DPRINTF1(" -> %d\r\n", res.res);
     break;
   }
 
@@ -415,7 +450,7 @@ void interrupt(void)
     serin(&res, sizeof(res));
     req->status = res.res;
     DNAMEPRINT(req->addr, true, "CHMOD: ");
-    DPRINTF(" 0x%02x -> 0x%02x\r\n", cmd.attr, res.res);
+    DPRINTF1(" 0x%02x -> 0x%02x\r\n", cmd.attr, res.res);
     break;
   }
 
@@ -434,7 +469,7 @@ void interrupt(void)
     memcpy(&fb->atr, &res.file.atr, sizeof(res.file) - 1);
     req->status = res.res;
     DNAMEPRINT(req->addr, false, "FILES: ");
-    DPRINTF(" attr=0x%02x filep=0x%08x -> %d %s\r\n", cmd.attr, cmd.filep, res.res, res.file.name);
+    DPRINTF1(" attr=0x%02x filep=0x%08x -> %d %s\r\n", cmd.attr, cmd.filep, res.res, res.file.name);
     break;
   }
 
@@ -450,7 +485,7 @@ void interrupt(void)
     serin(&res, sizeof(res));
     memcpy(&fb->atr, &res.file.atr, sizeof(res.file) - 1);
     req->status = res.res;
-    DPRINTF("NFILES: filep=0x%08x -> %d %s\r\n", cmd.filep, res.res, res.file.name);
+    DPRINTF1("NFILES: filep=0x%08x -> %d %s\r\n", cmd.filep, res.res, res.file.name);
     break;
   }
 
@@ -469,7 +504,7 @@ void interrupt(void)
     *(uint32_t *)(&((uint8_t *)req->fcb)[64]) = 0;
     req->status = res.res;
     DNAMEPRINT(req->addr, true, "CREATE: ");
-    DPRINTF(" fcb=0x%08x attr=0x%02x mode=%d -> %d\r\n", cmd.fcb, cmd.attr, cmd.mode, res.res);
+    DPRINTF1(" fcb=0x%08x attr=0x%02x mode=%d -> %d\r\n", cmd.fcb, cmd.attr, cmd.mode, res.res);
     break;
   }
 
@@ -487,7 +522,7 @@ void interrupt(void)
     *(uint32_t *)(&((uint8_t *)req->fcb)[64]) = res.size;
     req->status = res.res;
     DNAMEPRINT(req->addr, true, "OPEN: ");
-    DPRINTF(" fcb=0x%08x mode=%d -> %d\r\n", cmd.fcb, cmd.mode, res.res);
+    DPRINTF1(" fcb=0x%08x mode=%d -> %d\r\n", cmd.fcb, cmd.mode, res.res);
     break;
   }
 
@@ -503,7 +538,7 @@ void interrupt(void)
     struct res_close res;
     serin(&res, sizeof(res));
     req->status = res.res;
-    DPRINTF("CLOSE: fcb=0x%08x\r\n", cmd.fcb);
+    DPRINTF1("CLOSE: fcb=0x%08x\r\n", cmd.fcb);
     break;
   }
 
@@ -559,7 +594,7 @@ void interrupt(void)
     }
 
 errout:
-    DPRINTF("READ: fcb=0x%08x %d -> %d\r\n", (uint32_t)req->fcb, req->status, size);
+    DPRINTF1("READ: fcb=0x%08x %d -> %d\r\n", (uint32_t)req->fcb, req->status, size);
     req->status = size;
     break;
   }
@@ -605,7 +640,7 @@ okout:
       if (*pp > *sp)
         *sp = *pp;    //FCBのファイルサイズを増やす
     }
-    DPRINTF("WRITE: fcb=0x%08x %d -> %d\r\n", (uint32_t)req->fcb, req->status, len);
+    DPRINTF1("WRITE: fcb=0x%08x %d -> %d\r\n", (uint32_t)req->fcb, req->status, len);
     req->status = len;
     break;
   }
@@ -626,7 +661,7 @@ okout:
     *(uint32_t *)(&((uint8_t *)req->fcb)[6]) = res.pos;
 
     req->status = res.res;
-    DPRINTF("SEEK: fcb=0x%x offset=%d whence=%d -> %d\r\n", cmd.fcb, cmd.offset, cmd.whence, res.pos);
+    DPRINTF1("SEEK: fcb=0x%x offset=%d whence=%d -> %d\r\n", cmd.fcb, cmd.offset, cmd.whence, res.pos);
     break;
   }
 
@@ -642,7 +677,7 @@ okout:
     struct res_filedate res;
     serin(&res, sizeof(res));
     req->status = res.time + (res.date << 16);
-    DPRINTF("FILEDATE: fcb=0x%08x 0x%04x 0x%04x -> 0x%04x 0x%04x\r\n", cmd.fcb, cmd.date, cmd.time, res.date, res.time);
+    DPRINTF1("FILEDATE: fcb=0x%08x 0x%04x 0x%04x -> 0x%04x 0x%04x\r\n", cmd.fcb, cmd.date, cmd.time, res.date, res.time);
     break;
   }
 
@@ -660,14 +695,14 @@ okout:
     p[2] = res.clusect;
     p[3] = res.sectsize;
     req->status = res.res;
-    DPRINTF("DSKFRE: free=%u total=%u clusect=%u sectsz=%u res=%d\r\n", res.freeclu, res.totalclu, res.clusect, res.sectsize, res.res);
+    DPRINTF1("DSKFRE: free=%u total=%u clusect=%u sectsz=%u res=%d\r\n", res.freeclu, res.totalclu, res.clusect, res.sectsize, res.res);
 
     break;
   }
 
   case 0x51: /* drvctrl */
   {
-    DPRINTF("DRVCTRL:\r\n");
+    DPRINTF1("DRVCTRL:\r\n");
     req->attr = 2;
     req->status = 0;
     break;
@@ -675,7 +710,7 @@ okout:
 
   case 0x52: /* getdbp */
   {
-    DPRINTF("GETDPB:\r\n");
+    DPRINTF1("GETDPB:\r\n");
     uint8_t *p = (uint8_t *)req->addr;
     memset(p, 0, 16);
     *(uint16_t *)&p[0] = 512;   // 一部のアプリがエラーになるので仮のセクタ長を設定しておく
@@ -685,32 +720,32 @@ okout:
   }
 
   case 0x53: /* diskred */
-    DPRINTF("DISKRED:\r\n");
+    DPRINTF1("DISKRED:\r\n");
     req->status = 0;
     break;
 
   case 0x54: /* diskwrt */
-    DPRINTF("DISKWRT:\r\n");
+    DPRINTF1("DISKWRT:\r\n");
     req->status = 0;
     break;
 
   case 0x55: /* ioctl */
-    DPRINTF("IOCTL:\r\n");
+    DPRINTF1("IOCTL:\r\n");
     req->status = 0;
     break;
 
   case 0x56: /* abort */
-    DPRINTF("ABORT:\r\n");
+    DPRINTF1("ABORT:\r\n");
     req->status = 0;
     break;
 
   case 0x57: /* mediacheck */
-    DPRINTF("MEDIACHECK:\r\n");
+    DPRINTF1("MEDIACHECK:\r\n");
     req->status = 0;
     break;
 
   case 0x58: /* lock */
-    DPRINTF("LOCK:\r\n");
+    DPRINTF1("LOCK:\r\n");
     req->status = 0;
     break;
 
