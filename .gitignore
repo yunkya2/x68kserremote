@@ -1,4 +1,8 @@
 *.o
 *.sys
+*.SYS
 *.elf*
 *.exe
+*.zip
+.vscode
+build/
