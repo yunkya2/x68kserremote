@@ -1133,15 +1133,11 @@ void op_seek(int fd, char *buf)
 
   off_t off = lseek(filefd, (int32_t)be32toh(cmd->offset), cmd->whence);
   if (off == (off_t)-1) {
-    res.res = conv_errno(errno);
+    res.res = htobe32(conv_errno(errno));
   } else {
-    res.pos = htobe32(off);
+    res.res = htobe32(off);
   }
-  DPRINTF1("SEEK: fcb=0x%x offset=%d whence=%d ->", cmd->fcb, be32toh(cmd->offset), cmd->whence);
-  if (res.res)
-    DPRINTF1("%d\n", res.res);
-  else
-    DPRINTF1("%d\n", off);
+  DPRINTF1("SEEK: fcb=0x%x offset=%d whence=%d -> %d\n", cmd->fcb, be32toh(cmd->offset), cmd->whence, be32toh(res.res));
   serout(fd, &res, sizeof(res));
 }
 

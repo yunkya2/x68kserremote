@@ -231,8 +231,7 @@ struct cmd_seek {
   int32_t offset;
 } __attribute__((packed, aligned(2)));
 struct res_seek {
-  int8_t res;
-  uint32_t pos;
+  int32_t res;
 } __attribute__((packed, aligned(2)));
 
 struct cmd_filedate {

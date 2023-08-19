@@ -574,7 +574,7 @@ void interrupt(void)
         dcache.len = send_read((uint32_t)req->fcb, dcache.cache, sizeof(dcache.cache));
         if (dcache.len < 0) {
           size = -1;
-          goto errout;
+          goto errout_read;
         }
         dcache.fcb = (uint32_t)req->fcb;
         dcache.offset = *pp;
@@ -587,13 +587,13 @@ void interrupt(void)
       rlen = send_read((uint32_t)req->fcb, buf, len);
       if (rlen < 0) {
         size = -1;
-        goto errout;
+        goto errout_read;
       }
       size += rlen;
       *pp += rlen;    // FCBのファイルポインタを進める
     }
 
-errout:
+errout_read:
     DPRINTF1("READ: fcb=0x%08x %d -> %d\r\n", (uint32_t)req->fcb, req->status, size);
     req->status = size;
     break;
@@ -612,7 +612,7 @@ errout:
           // 書き込みデータがキャッシュに収まる場合はキャッシュに書く
           memcpy(dcache.cache + dcache.len, (char *)req->addr, len);
           dcache.len += len;
-          goto okout;
+          goto okout_write;
         } else {    //キャッシュに収まらないのでフラッシュ
           dcache_flash((uint32_t)req->fcb, true);
         }
@@ -624,7 +624,7 @@ errout:
         memcpy(dcache.cache, (char *)req->addr, len);
         dcache.len = len;
         dcache.dirty = true;
-        goto okout;
+        goto okout_write;
       }
     }
 
@@ -634,7 +634,7 @@ errout:
       *sp = *pp;      //0バイト書き込み=truncateなのでFCBのファイルサイズをポインタ位置にする
     }
 
-okout:
+okout_write:
     if (len > 0) {
       *pp += len;     //FCBのファイルポインタを進める
       if (*pp > *sp)
@@ -654,14 +654,22 @@ okout:
     cmd.fcb = (uint32_t)req->fcb;
     cmd.whence = req->attr;
     cmd.offset = req->status;
+
+    uint32_t pos = *(uint32_t *)(&((uint8_t *)req->fcb)[6]);
+    uint32_t size = *(uint32_t *)(&((uint8_t *)req->fcb)[64]);
+    pos = (cmd.whence == 0 ? 0 : (cmd.whence == 1 ? pos : size)) + cmd.offset;
+    if (pos > size) {   // ファイル末尾を越えてseekしようとした
+      req->status = _DOSE_CANTSEEK;
+      goto errout_seek;
+    }
     serout(&cmd, sizeof(cmd));
 
     struct res_seek res;
     serin(&res, sizeof(res));
-    *(uint32_t *)(&((uint8_t *)req->fcb)[6]) = res.pos;
-
+    *(uint32_t *)(&((uint8_t *)req->fcb)[6]) = res.res;
     req->status = res.res;
-    DPRINTF1("SEEK: fcb=0x%x offset=%d whence=%d -> %d\r\n", cmd.fcb, cmd.offset, cmd.whence, res.pos);
+errout_seek:
+    DPRINTF1("SEEK: fcb=0x%x offset=%d whence=%d -> %d\r\n", cmd.fcb, cmd.offset, cmd.whence, res.res);
     break;
   }
 
