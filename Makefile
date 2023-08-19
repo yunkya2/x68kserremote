@@ -36,7 +36,7 @@ clean:
 	(cd driver;make clean)
 	-rm -rf build
 
-RELFILE := x68kserremote-$(shell date +%Y%m%d)
+RELFILE := x68kserremote-$(shell git describe --tags --always)
 
 release: all
 	rm -rf build && mkdir build
