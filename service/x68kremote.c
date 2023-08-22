@@ -1274,6 +1274,13 @@ int main(int argc, char **argv)
     DPRINTF2("----Command: 0x%02x\n", buf[0]);
 
     switch (buf[0]) {
+    case 0x40: /* check */
+    {
+      struct res_check res = { .res = 0 };
+      DPRINTF1("CHECK:\n");
+      serout(fd, &res, sizeof(res));
+      break;
+    }
     case 0x41: /* chdir */
       op_chdir(fd, buf);
       break;

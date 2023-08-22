@@ -122,6 +122,13 @@ typedef struct {
 // ZRMTDSK serial communication protocol definition
 //****************************************************************************
 
+struct cmd_check {
+  uint8_t command;
+} __attribute__((packed, aligned(2)));
+struct res_check {
+  int8_t res;
+} __attribute__((packed, aligned(2)));
+
 struct cmd_dirop {
   uint8_t command;
   dos_namebuf path;

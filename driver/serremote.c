@@ -43,6 +43,7 @@ struct dos_req_header *reqheader;   // Human68kからのリクエストヘッダ
 jmp_buf jenv;           //タイムアウト時のジャンプ先
 bool recovery = false;  //エラー回復モードフラグ
 int timeout = 500;      //コマンド受信タイムアウト(3sec)
+int resmode = 0;        //登録モード (0:常に登録 / 1:起動時にサーバと通信できたら登録)
 
 #ifdef DEBUG
 int debuglevel = 0;
@@ -285,6 +286,15 @@ int dcache_flash(uint32_t fcb, bool clean)
   return res;
 }
 
+static int my_atoi(char *p)
+{
+  int res = 0;
+  while (*p >= '0' && *p <= '9') {
+    res = res * 10 + *p++ - '0';
+  }
+  return res;
+}
+
 //****************************************************************************
 // Device driver interrupt rountine
 //****************************************************************************
@@ -295,6 +305,9 @@ void interrupt(void)
   struct dos_req_header *req = reqheader;
 
   if (setjmp(jenv)) {
+    if (resmode == 1) {     // 起動時にサーバが応答しなかった
+      _dos_print("リモートドライブサービスが応答しないため組み込みません\r\n");
+    }
     DPRINTF1("command timeout\r\n");
     req->errh = 0x10;
     req->errl = 0x02;
@@ -317,17 +330,33 @@ void interrupt(void)
     char *p = (char *)req->status;
     p += strlen(p) + 1;
     while (*p != '\0') {
+      if (*p == '/' || *p =='-') {
+        p++;
+        switch (*p | 0x20) {
 #ifdef DEBUG
-      if (strcmp(p, "/D") == 0) {
-        debuglevel++;
-      } else
+        case 'd':         // /D .. デバッグレベル増加
+          debuglevel++;
+          break;
 #endif
-      if (*p >= '0' && *p <= '9') {
-        baudrate = 0;
-        baudstr = p;
-        for (char *q = p; *q >= '0' && *q <= '9'; q++) {
-          baudrate = baudrate * 10 + *q - '0';
+        case 's':         // /s<speed> .. 通信速度設定
+          p++;
+          baudrate = my_atoi(p);
+          baudstr = p;
+          break;
+        case 'r':         // /r<mode> .. 登録モード
+          p++;
+          resmode = my_atoi(p);
+          break;
+        case 't':         // /t<timeout> .. タイムアウト設定
+          p++;
+          timeout = my_atoi(p) * 100;
+          if (timeout == 0)
+            timeout = 500;
+          break;
         }
+      } else if (*p >= '0' && *p <= '9') {
+        baudrate = my_atoi(p);
+        baudstr = p;
       }
       p += strlen(p) + 1;
     }
@@ -344,6 +373,17 @@ void interrupt(void)
       bdset = 9;
       baudstr = "38400";
     }
+
+    if (resmode != 0) {     // サーバが応答するか確認する
+      struct cmd_check cmd;
+      cmd.command = req->command;
+      serout(&cmd, sizeof(cmd));
+
+      struct res_check res;
+      serin(&res, sizeof(res));
+      DPRINTF1("CHECK:\r\n");
+    }
+    resmode = 0;  // 応答を確認できたのでモードを戻す
 
     _dos_print("ドライブ");
     _dos_putchar('A' + *(char *)&req->fcb);
