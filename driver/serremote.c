@@ -374,6 +374,9 @@ void interrupt(void)
       baudstr = "38400";
     }
 
+    // stop 1 / nonparity / 8bit / nonxoff
+    _iocs_set232c(0x4c00 | bdset);
+
     if (resmode != 0) {     // サーバが応答するか確認する
       struct cmd_check cmd;
       cmd.command = req->command;
@@ -395,9 +398,6 @@ void interrupt(void)
     extern char _end;
     req->attr = 1; /* Number of units */
     req->addr = &_end;
-
-    // stop 1 / nonparity / 8bit / nonxoff
-    _iocs_set232c(0x4c00 | bdset);
     break;
   }
 
