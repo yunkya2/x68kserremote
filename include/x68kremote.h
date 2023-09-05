@@ -27,21 +27,18 @@
 
 #include <stdint.h>
 
-//****************************************************************************
-// unaligned big-endian variable
-//****************************************************************************
+#ifdef CONFIG_ALIGNED
+#define CONFIG_WORDALIGN  __attribute__((aligned(4)))
+#else
+#define CONFIG_WORDALIGN
+#endif
 
-typedef uint8_t uabe16_t[2];
-typedef uint8_t uabe32_t[4];
-
-#define get_uabe16(x)       (((x)[0] << 8) | ((x)[1]))
-#define get_uabe32(x)       (((x)[0] << 24) | ((x)[1] << 16) | ((x)[2] << 8) | ((x)[3]))
-#define set_uabe16(x, v)    do { (x)[0] = ((v) >> 8) & 0xff; \
-                                 (x)[1] = (v) & 0xff; } while (0)
-#define set_uabe32(x, v)    do { (x)[0] = ((v) >> 24) & 0xff; \
-                                 (x)[1] = ((v) >> 16) & 0xff; \
-                                 (x)[2] = ((v) >> 8) & 0xff; \
-                                 (x)[3] = (v) & 0xff; } while (0)
+#ifndef CONFIG_NFILEINFO
+#define CONFIG_NFILEINFO  1
+#endif
+#ifndef CONFIG_DATASIZE
+#define CONFIG_DATASIZE   1024
+#endif
 
 //****************************************************************************
 // Human68k error code
@@ -124,143 +121,143 @@ typedef struct {
 
 struct cmd_check {
   uint8_t command;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 struct res_check {
   int8_t res;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 
 struct cmd_dirop {
   uint8_t command;
   dos_namebuf path;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 struct res_dirop {
   int8_t res;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 
 struct cmd_rename {
   uint8_t command;
   dos_namebuf path_old;
   dos_namebuf path_new;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 struct res_rename {
   int8_t res;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 
 struct cmd_chmod {
   uint8_t command;
   uint8_t attr;
   dos_namebuf path;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 struct res_chmod {
   int8_t res;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 
 struct cmd_files {
   uint8_t command;
   uint8_t attr;
-  uint32_t filep;
+  uint32_t filep  CONFIG_WORDALIGN;
   dos_namebuf path;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 struct res_files {
   int8_t res;
-  struct dos_filesinfo file;
-} __attribute__((packed, aligned(2)));
+#if CONFIG_NFILEINFO > 1
+  uint8_t num;
+#endif
+  struct dos_filesinfo file[CONFIG_NFILEINFO];
+} __attribute__((packed));
 
 struct cmd_nfiles {
   uint8_t command;
-  uint32_t filep;
-} __attribute__((packed, aligned(2)));
+  uint32_t filep  CONFIG_WORDALIGN;
+} __attribute__((packed));
 struct res_nfiles {
   int8_t res;
-  struct dos_filesinfo file;
-} __attribute__((packed, aligned(2)));
+#if CONFIG_NFILEINFO > 1
+  uint8_t num;
+#endif
+  struct dos_filesinfo file[CONFIG_NFILEINFO];
+} __attribute__((packed));
 
 struct cmd_create {
   uint8_t command;
   uint8_t attr;
   uint8_t mode;
-  uint32_t fcb;
+  uint32_t fcb  CONFIG_WORDALIGN;
   dos_namebuf path;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 struct res_create {
   int8_t res;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 
 struct cmd_open {
   uint8_t command;
   uint8_t mode;
-  uint32_t fcb;
+  uint32_t fcb  CONFIG_WORDALIGN;
   dos_namebuf path;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 struct res_open {
   int8_t res;
-  uint32_t size;
-} __attribute__((packed, aligned(2)));
+  uint32_t size  CONFIG_WORDALIGN;
+} __attribute__((packed));
 
 struct cmd_close {
   uint8_t command;
-  uint32_t fcb;
-} __attribute__((packed, aligned(2)));
+  uint32_t fcb  CONFIG_WORDALIGN;
+} __attribute__((packed));
 struct res_close {
   int8_t res;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 
 struct cmd_read {
   uint8_t command;
-  uint32_t fcb;
-  uint32_t len;
-} __attribute__((packed, aligned(2)));
-struct cmd_read_ack {
-  uint8_t ack;
-} __attribute__((packed, aligned(2)));
+  uint32_t fcb  CONFIG_WORDALIGN;
+  uint16_t len;
+} __attribute__((packed));
 struct res_read {
   int16_t len;
-  uint8_t data[1024];
-} __attribute__((packed, aligned(2)));
+  uint8_t data[CONFIG_DATASIZE];
+} __attribute__((packed));
 
 struct cmd_write {
   uint8_t command;
-  uint32_t fcb;
-  uint32_t len;
-} __attribute__((packed, aligned(2)));
-struct cmd_write_body {
-  int16_t len;
-  uint8_t data[1024];
-} __attribute__((packed, aligned(2)));
+  uint32_t fcb  CONFIG_WORDALIGN;
+  uint16_t len;
+  uint8_t data[CONFIG_DATASIZE];
+} __attribute__((packed));
 struct res_write {
   int16_t len;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 
 struct cmd_seek {
   uint8_t command;
   uint8_t whence;
-  uint32_t fcb;
-  int32_t offset;
-} __attribute__((packed, aligned(2)));
+  uint32_t fcb  CONFIG_WORDALIGN;
+  int32_t offset  CONFIG_WORDALIGN;
+} __attribute__((packed));
 struct res_seek {
-  int32_t res;
-} __attribute__((packed, aligned(2)));
+  int32_t res  CONFIG_WORDALIGN;
+} __attribute__((packed));
 
 struct cmd_filedate {
   uint8_t command;
-  uint32_t fcb;
+  uint32_t fcb  CONFIG_WORDALIGN;
   uint16_t time;
   uint16_t date;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 struct res_filedate {
   uint16_t time;
   uint16_t date;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 
 struct cmd_dskfre {
   uint8_t command;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 struct res_dskfre {
-  int32_t res;
+  int32_t res  CONFIG_WORDALIGN;
   uint16_t freeclu;
   uint16_t totalclu;
   uint16_t clusect;
   uint16_t sectsize;
-} __attribute__((packed, aligned(2)));
+} __attribute__((packed));
 
 #endif /* _X68KREMOTE_H_ */
