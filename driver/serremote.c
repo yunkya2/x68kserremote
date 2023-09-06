@@ -201,28 +201,28 @@ void serin(void *buf, size_t len)
 ssize_t send_read(uint32_t fcb, char *buf, size_t len)
 {
   struct cmd_read cmd;
+  struct res_read res;
   cmd.command = 0x4c; /* read */
   cmd.fcb = (uint32_t)fcb;
-  cmd.len = len;
-  serout(&cmd, sizeof(cmd));
-
-  DPRINTF1(" read: addr=0x%08x len=%d\r\n", (uint32_t)buf, len);  
-
-  struct res_read res;
-  struct cmd_read_ack ack = { .ack = 0 };
-  uint8_t *ptr = (uint8_t *)buf;
   ssize_t total = 0;
-  while (1) {
+
+  while (len > 0) {
+    size_t size = len > sizeof(res.data) ? sizeof(res.data) : len;
+    cmd.len = size;
+
+    serout(&cmd, sizeof(cmd));
     serin(&res, sizeof(res));
-    DPRINTF1(" read: len=%d\r\n", res.len);
+
+    DPRINTF1(" read: addr=0x%08x len=%d size=%d\r\n", (uint32_t)buf, len, res.len);
     if (res.len < 0)
       return res.len;
     if (res.len == 0)
       break;
-    memcpy(ptr, res.data, res.len);
-    ptr += res.len;
+
+    memcpy(buf, res.data, res.len);
+    buf += res.len;
     total += res.len;
-    serout(&ack, sizeof(ack));
+    len -= res.len;
   }
   DPRINTF1(" read: total=%d\r\n", total);
   return total;
@@ -230,35 +230,33 @@ ssize_t send_read(uint32_t fcb, char *buf, size_t len)
 
 ssize_t send_write(uint32_t fcb, char *buf, size_t len)
 {
-  struct cmd_write cmd;
+  static struct cmd_write cmd;
+  static struct res_write res;
   cmd.command = 0x4d; /* write */
   cmd.fcb = (uint32_t)fcb;
-  cmd.len = len;
-  serout(&cmd, sizeof(cmd));
-
-  DPRINTF1(" write: addr=0x%08x len=%d\r\n", (uint32_t)buf, len);  
-
-  struct cmd_write_body body;
-  struct res_write res;
-  uint8_t *ptr = (uint8_t *)buf;
   ssize_t total = 0;
 
-  serin(&res, sizeof(res));
-  while (len > 0 && res.len > 0) {
-    size_t s = len > sizeof(body.data) ? sizeof(body.data) : len;
-    memcpy(body.data, ptr, s);
-    body.len = s;
-    serout(&body, s + 2);
+  if (len == 0) {
+    cmd.len = len;
+    serout(&cmd, sizeof(cmd));
     serin(&res, sizeof(res));
-    DPRINTF1(" write: len=%d -> %d\r\n", s, res.len);
-     if (res.len < 0)
-      break;
-    ptr += res.len;
-    len -= res.len;
-    total += res.len;
+  } else {
+    while (len > 0) {
+      size_t s = len > sizeof(cmd.data) ? sizeof(cmd.data) : len;
+      memcpy(cmd.data, buf, s);
+      cmd.len = s;
+
+      serout(&cmd, 7 + s);
+      serin(&res, sizeof(res));
+
+      DPRINTF1(" write: addr=0x%08x len=%d size=%d\r\n", (uint32_t)buf, len, res.len);
+      if (res.len < 0)
+        return res.len;
+      buf += res.len;
+      len -= res.len;
+      total += res.len;
+    }
   }
-  if (res.len < 0)
-    total = res.len;
   DPRINTF1(" write: total=%d\r\n", total);
   return total;
 }
@@ -506,10 +504,10 @@ void interrupt(void)
     struct res_files res;
     struct dos_filbuf *fb = (struct dos_filbuf *)req->status;
     serin(&res, sizeof(res));
-    memcpy(&fb->atr, &res.file.atr, sizeof(res.file) - 1);
+    memcpy(&fb->atr, &res.file[0].atr, sizeof(res.file[0]) - 1);
     req->status = res.res;
     DNAMEPRINT(req->addr, false, "FILES: ");
-    DPRINTF1(" attr=0x%02x filep=0x%08x -> %d %s\r\n", cmd.attr, cmd.filep, res.res, res.file.name);
+    DPRINTF1(" attr=0x%02x filep=0x%08x -> %d %s\r\n", cmd.attr, cmd.filep, res.res, res.file[0].name);
     break;
   }
 
@@ -523,9 +521,9 @@ void interrupt(void)
     struct res_nfiles res;
     struct dos_filbuf *fb = (struct dos_filbuf *)req->status;
     serin(&res, sizeof(res));
-    memcpy(&fb->atr, &res.file.atr, sizeof(res.file) - 1);
+    memcpy(&fb->atr, &res.file[0].atr, sizeof(res.file[0]) - 1);
     req->status = res.res;
-    DPRINTF1("NFILES: filep=0x%08x -> %d %s\r\n", cmd.filep, res.res, res.file.name);
+    DPRINTF1("NFILES: filep=0x%08x -> %d %s\r\n", cmd.filep, res.res, res.file[0].name);
     break;
   }
 

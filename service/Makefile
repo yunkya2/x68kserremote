@@ -23,7 +23,7 @@
 
 GIT_REPO_VERSION=$(shell git describe --tags --always)
 
-CFLAGS = -I. -I../include -O -DGIT_REPO_VERSION=\"$(GIT_REPO_VERSION)\"
+CFLAGS = -g -I. -I../include -O -DGIT_REPO_VERSION=\"$(GIT_REPO_VERSION)\"
 ifeq ($(MSYSTEM),MSYS)
 LDFLAGS += -liconv
 endif

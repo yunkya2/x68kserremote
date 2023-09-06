@@ -26,6 +26,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdlib.h>
+#include <stddef.h>
 #include <stdarg.h>
 #include <ctype.h>
 #include <errno.h>
@@ -131,7 +132,7 @@ int serin(int fd, void *buf, size_t len)
   // 同期バイトをチェック:  ZZZ...ZZZX でデータ転送開始
   do { 
     l = read(fd, &c, 1);
-    DPRINTF3("%02X %d ", c, l);
+    DPRINTF3("%02X ", c);
   } while (l < 1 || c != 'Z');
   do {
     l = read(fd, &c, 1);
@@ -741,8 +742,8 @@ void op_files(int fd, char *buf)
 
 #ifndef WINNT
     // ファイル名をSJISに変換する
-    char *dst_buf = res.file.name;
-    size_t dst_len = sizeof(res.file.name) - 1;
+    char *dst_buf = res.file[0].name;
+    size_t dst_len = sizeof(res.file[0].name) - 1;
     char *src_buf = childName;
     size_t src_len = strlen(childName);
     if (iconv(cd, &src_buf, &src_len, &dst_buf, &dst_len) < 0) {
@@ -751,14 +752,14 @@ void op_files(int fd, char *buf)
     *dst_buf = '\0';
 #else
     // MinGWではSJISのまま
-    if (strlen(childName) > sizeof(res.file.name) - 1) {
+    if (strlen(childName) > sizeof(res.file[0].name) - 1) {
       continue;
     }
-    strcpy(res.file.name, childName);
+    strcpy(res.file[0].name, childName);
 #endif
     uint8_t c;
-    for (int i = 0; i < sizeof(res.file.name); i++) {
-      if (!(c = res.file.name[i]))
+    for (int i = 0; i < sizeof(res.file[0].name); i++) {
+      if (!(c = res.file[0].name[i]))
         break;
       if (0x81 <= c && c <= 0x9f || 0xe0 <= c && c <= 0xef) {  //SJISの1バイト目
         i++;
@@ -775,7 +776,7 @@ void op_files(int fd, char *buf)
     }
 
     //ファイル名を分解する
-    char *b = res.file.name;
+    char *b = res.file[0].name;
     int k = strlen(b);
     int m = (b[k - 1] == '.' ? k :  //name.
              k >= 3 && b[k - 2] == '.' ? k - 2 :  //name.e
@@ -824,14 +825,14 @@ void op_files(int fd, char *buf)
     if (0xffffffffL < st.st_size) {  //4GB以上のファイルは検索できないことにする
       continue;
     }
-    conv_statinfo(&st, &res.file);
-    if ((res.file.atr & cmd->attr) == 0) {  //属性がマッチしない
+    conv_statinfo(&st, &res.file[0]);
+    if ((res.file[0].atr & cmd->attr) == 0) {  //属性がマッチしない
       continue;
     }
 
     //ファイル名リストに追加する
     dl->dirbuf = realloc(dl->dirbuf, sizeof(struct dos_filesinfo) * (dl->buflen + 1));
-    memcpy(&dl->dirbuf[dl->buflen], &res.file, sizeof(struct dos_filesinfo));
+    memcpy(&dl->dirbuf[dl->buflen], &res.file[0], sizeof(struct dos_filesinfo));
     dl->buflen++;
   }
 
@@ -846,7 +847,7 @@ void op_files(int fd, char *buf)
 
   //ファイル名リストの最初のエントリを返す
   if (dl->bufcnt < dl->buflen) {
-    memcpy(&res.file, &dl->dirbuf[dl->bufcnt], sizeof(res.file));
+    memcpy(&res.file[0], &dl->dirbuf[dl->bufcnt], sizeof(res.file[0]));
     dl->bufcnt++;
     res.res = 0;
   }
@@ -856,7 +857,7 @@ errout:
   if (res.res)
     DPRINTF1("%d\n", res.res);
   else
-    DPRINTF1("(%d/%d) %s\n", dl->bufcnt, dl->buflen, res.file.name);
+    DPRINTF1("(%d/%d) %s\n", dl->bufcnt, dl->buflen, res.file[0].name);
 
   if (dl->bufcnt == dl->buflen) {   //ファイル名リストが空
     dl_free(cmd->filep);
@@ -875,10 +876,10 @@ void op_nfiles(int fd, char *buf)
   DPRINTF1("NFILES: 0x%08x -> ", cmd->filep);
 
   if (dl = dl_alloc(cmd->filep, false)) {
-    memcpy(&res.file, &dl->dirbuf[dl->bufcnt], sizeof(res.file));
+    memcpy(&res.file[0], &dl->dirbuf[dl->bufcnt], sizeof(res.file[0]));
     dl->bufcnt++;
     res.res = 0;
-    DPRINTF1("(%d/%d) %s\n", dl->bufcnt, dl->buflen, res.file.name);
+    DPRINTF1("(%d/%d) %s\n", dl->bufcnt, dl->buflen, res.file[0].name);
     if (dl->bufcnt == dl->buflen) {   //もう残っているファイルがない
       dl_free(cmd->filep);
     }
@@ -1031,7 +1032,7 @@ void op_open(int fd, char *buf)
     res.size = htobe32(len);
   }
 errout:
-  DPRINTF1("OPEN: fcb=x%08x mode=%d %s -> %d %d\n", cmd->fcb, cmd->mode, path, res.res, be32toh(res.size));
+  DPRINTF1("OPEN: fcb=0x%08x mode=%d %s -> %d %d\n", cmd->fcb, cmd->mode, path, res.res, be32toh(res.size));
   serout(fd, &res, sizeof(res));
 }
 
@@ -1055,32 +1056,20 @@ void op_close(int fd, char *buf)
 void op_read(int fd, char *buf)
 {
   struct cmd_read *cmd = (struct cmd_read *)buf;
-  struct cmd_read_ack ack;
   struct res_read res;
   int filefd = fi_getfd(cmd->fcb);
-  size_t len = be32toh(cmd->len);
-  size_t size = 0;
+  size_t len = be16toh(cmd->len);
 
-  while (1) {
-    ssize_t bytes = len > sizeof(res.data) ? sizeof(res.data): len;
-    bytes = read(filefd, res.data, bytes);
-    if (bytes < 0) {
-      res.len = conv_errno(errno);
-      bytes = 0;
-    } else {
-      res.len = htobe16(bytes);
-    }
-    len -= bytes;
-    size += bytes;
-    DPRINTF1(" read %d %u %u\n", bytes, len, size);
-    serout(fd, &res, bytes + 2);
-    if (bytes <= 0)   // ファイルが終了orエラー
-      break;
-    if (serin(fd, &ack, sizeof(ack)) < 0 || ack.ack != 0)
-      break;
+  ssize_t bytes = read(filefd, res.data, len);
+  if (bytes < 0) {
+    res.len = htobe16(conv_errno(errno));
+    bytes = 0;
+  } else {
+    res.len = htobe16(bytes);
   }
 
-  DPRINTF1("READ: fcb=0x%08x %d -> %d\n", cmd->fcb, be32toh(cmd->len), size);
+  DPRINTF1("READ: fcb=0x%08x %d -> %d\n", cmd->fcb, len, bytes);
+  serout(fd, &res, 2 + bytes);
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
@@ -1088,39 +1077,27 @@ void op_read(int fd, char *buf)
 void op_write(int fd, char *buf)
 {
   struct cmd_write *cmd = (struct cmd_write *)buf;
-  struct cmd_write_body body;
   struct res_write res;
   int filefd = fi_getfd(cmd->fcb);
-  size_t len = be32toh(cmd->len);
-  size_t size = 0;
+  size_t len = be16toh(cmd->len);
 
   if (len == 0) {     // 0バイトのwriteはファイル長を0に切り詰める
     if (ftruncate(filefd, lseek(filefd, 0, SEEK_CUR)) < 0) {
-      res.len = conv_errno(errno);
+      res.len = htobe16(conv_errno(errno));
     } else {
       res.len = 0;
     }
   } else {
-    res.len = 1;      // これから書き込みデータを受信する
-  }
-  serout(fd, &res, sizeof(res));
-  while (len > 0 && res.len > 0) {
-    if (serin(fd, &body, sizeof(body)) < 0)
-      break;
-    ssize_t bytes = write(filefd, body.data, be16toh(body.len));
+    ssize_t bytes = write(filefd, cmd->data, len);
     if (bytes < 0) {
-      res.len = conv_errno(errno);
-      bytes = 0;
+      res.len = htobe16(conv_errno(errno));
     } else {
       res.len = htobe16(bytes);
     }
-    len -= bytes;
-    size += bytes;
-    DPRINTF1(" write %d %u %u\n", bytes, len, size);
-    serout(fd, &res, sizeof(res));
   }
 
-  DPRINTF1("WRITE: fcb=0x%08x %d -> %d\n", cmd->fcb, be32toh(cmd->len), size);
+  DPRINTF1("WRITE: fcb=0x%08x %d -> %d\n", cmd->fcb, len, be16toh(res.len));
+  serout(fd, &res, sizeof(res));
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
@@ -1266,7 +1243,7 @@ int main(int argc, char **argv)
   printf("X68000 Serial Remote Drive Service (version %s)\n", GIT_REPO_VERSION);
 
   while (1) {
-    uint8_t buf[1024];
+    uint8_t buf[1024 + 8];
     if (serin(fd, buf, sizeof(buf)) < 0) {
       continue;
     }

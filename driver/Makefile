@@ -30,7 +30,7 @@ RANLIB = $(CROSS)ranlib
 
 GIT_REPO_VERSION=$(shell git describe --tags --always)
 
-CFLAGS = -m68000 -I. -I../include -O3 -DGIT_REPO_VERSION=\"$(GIT_REPO_VERSION)\"
+CFLAGS = -g -m68000 -I. -I../include -Os -DGIT_REPO_VERSION=\"$(GIT_REPO_VERSION)\"
 CFLAGS += -finput-charset=utf-8 -fexec-charset=cp932
 ASFLAGS = -m68000 -I.
 
