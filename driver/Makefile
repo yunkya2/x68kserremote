@@ -40,10 +40,11 @@ endif
 
 all: SERREMOTE.SYS
 
-SERREMOTE.SYS: head.o serremote.o
+SERREMOTE.SYS: head.o serremote.o remotedrv.o
 	$(LD) -o $@ $^ -nostartfiles -s
 
-serremote.o: ../include/x68kremote.h
+serremote.o: ../include/x68kremote.h remotedrv.h
+remotedrv.o: ../include/x68kremote.h remotedrv.h
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $<
