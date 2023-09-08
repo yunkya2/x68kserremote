@@ -39,6 +39,12 @@
 #ifndef CONFIG_DATASIZE
 #define CONFIG_DATASIZE   1024
 #endif
+#ifndef CONFIG_NDCACHE
+#define CONFIG_NDCACHE    2
+#endif
+#ifndef CONFIG_NFCACHE
+#define CONFIG_NFCACHE    1
+#endif
 
 //****************************************************************************
 // Human68k error code
@@ -155,6 +161,9 @@ struct res_chmod {
 struct cmd_files {
   uint8_t command;
   uint8_t attr;
+#if CONFIG_NFILEINFO > 1
+  uint8_t num;
+#endif
   uint32_t filep  CONFIG_WORDALIGN;
   dos_namebuf path;
 } __attribute__((packed));
@@ -168,6 +177,9 @@ struct res_files {
 
 struct cmd_nfiles {
   uint8_t command;
+#if CONFIG_NFILEINFO > 1
+  uint8_t num;
+#endif
   uint32_t filep  CONFIG_WORDALIGN;
 } __attribute__((packed));
 struct res_nfiles {
