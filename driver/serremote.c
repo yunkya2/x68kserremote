@@ -32,8 +32,8 @@
 #include <x68k/dos.h>
 #include <x68k/iocs.h>
 
-#include "config.h"
-#include "x68kremote.h"
+#include <config.h>
+#include <x68kremote.h>
 #include "remotedrv.h"
 
 //****************************************************************************
