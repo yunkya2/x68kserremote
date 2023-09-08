@@ -30,6 +30,7 @@
 #include <setjmp.h>
 #include <x68k/dos.h>
 
+#include "config.h"
 #include "x68kremote.h"
 #include "remotedrv.h"
 

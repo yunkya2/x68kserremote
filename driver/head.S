@@ -22,6 +22,7 @@
  * THE SOFTWARE.
  */
 
+#include "config.h"
 
 /* Human68k device driver header */
 
@@ -35,9 +36,68 @@ devheader:
     .word   0x2000              // device type (remote disk)
     .long   strategy            // strategy routine entry point
     .long   interrupt_asm       // interrupt routine entry point
-    .ascii  "\x01ZRMTDRV"       // device name
+
+#ifdef CONFIG_BOOTDRIVER
+    .ascii  "\x01SCHDISK"       // (SCSI BOOTROMはこの名前のドライバでないと認識しない)
+#else
+    .ascii  CONFIG_DEVNAME      // device name
+#endif
+
+#ifdef CONFIG_BOOTDRIVER
+    .long   0                   // (SCSI BOOTROMから書き込まれる)
+
+// BOOT用ドライバ生成の際に設定される
+reloffset:
+    .long   0                   // 再配置データへのオフセット
+relsize:
+    .long   0                   // 再配置データのサイズ
+bsssize:
+    .long   0                   // bssセクションのサイズ
+devname:
+    .ascii  CONFIG_DEVNAME      // device name
+#endif
 
 strategy:
+#ifdef CONFIG_BOOTDRIVER
+    movem.l %d0-%d1/%a0-%a3,%sp@-   // 初回実行時のみ再配置処理を行う
+
+    lea.l   %pc@(devheader),%a0     // a0: デバイスドライバ先頭アドレス
+    move.l  %a0,%a2                 // a2: 再配置処理を行うアドレス
+    move.l  %a0,%d1                 // d1: デバイスドライバ先頭アドレス
+    movea.l %pc@(reloffset),%a1
+    adda.l  %a0,%a1                 // a1: 再配置データのアドレス
+    movea.l %a1,%a3                 // a3: bssセクション先頭アドレス
+    adda.w  %a1@+,%a2               // 最初の2エントリ(ストラテジルーチン、割り込みルーチン)は
+    adda.w  %a1@+,%a2               // SCSI BOOT ROMによって既に再配置済みなのでスキップ
+    move.l  %pc@(relsize),%d0       // d0: 再配置データのサイズ
+    subq.l  #4,%d0                  // 最初の2エントリ分スキップ
+    lsr.w   #1,%d0                  // (ワード数)
+    bra     1f
+
+loop:
+    adda.w  %a1@+,%a2               // 再配置データを取得
+    add.l   %d1,%a2@                // 再配置処理
+1:
+    dbra    %d0,loop
+
+    move.l  %pc@(bsssize),%d0       // d0: bssセクションのサイズ
+    lsr.w   #1,%d0                  // (ワード数)
+    bra     2f
+
+loop1:
+    clr.l   %a3@+                   // bssセクションをクリア
+2:
+    dbra    %d0,loop1
+
+    lea.l   %pc@(3f),%a1            // 次回以降の呼び出しでは再配置処理は行わない
+    move.l  %a1,%a0@(6)
+    lea.l   %pc@(devname),%a1       // デバイス名を変更
+    move.l  %a1@+,%a0@(14)
+    move.l  %a1@+,%a0@(18)
+
+    movem.l %sp@+,%d0-%d1/%a0-%a3
+3:
+#endif
     move.l  %a5,reqheader
     rts
 

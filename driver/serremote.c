@@ -32,10 +32,9 @@
 #include <x68k/dos.h>
 #include <x68k/iocs.h>
 
+#include "config.h"
 #include "x68kremote.h"
 #include "remotedrv.h"
-
-//#define DEBUG
 
 //****************************************************************************
 // Global variables
@@ -223,10 +222,18 @@ void com_timeout(struct dos_req_header *req)
 
 void com_init(struct dos_req_header *req)
 {
-  _dos_print("\r\nX68000 Serial Remote Drive Driver (version ");
-  _dos_print(GIT_REPO_VERSION);
-  _dos_print(")\r\n");
+#ifdef CONFIG_BOOTDRIVER
+  _iocs_b_print
+#else
+  _dos_print
+#endif
+    ("\r\nX68000 Serial Remote Drive Driver (version " GIT_REPO_VERSION ")\r\n");
 
+#ifdef CONFIG_BOOTDRIVER
+  int baudrate = 9600;
+  char *baudstr = "9600";
+  int bdset = 7;
+#else
   int baudrate = 38400;
   char *baudstr = "38400";
   char *p = (char *)req->status;
@@ -275,10 +282,12 @@ void com_init(struct dos_req_header *req)
     bdset = 9;
     baudstr = "38400";
   }
+#endif
 
   // stop 1 / nonparity / 8bit / nonxoff
   _iocs_set232c(0x4c00 | bdset);
 
+#ifndef CONFIG_BOOTDRIVER
   if (resmode != 0) {     // サーバが応答するか確認する
     struct cmd_check cmd;
     struct res_check res;
@@ -293,5 +302,6 @@ void com_init(struct dos_req_header *req)
   _dos_print(":でRS-232Cに接続したリモートドライブが利用可能です (");
   _dos_print(baudstr);
   _dos_print("bps)\r\n");
+#endif
   DPRINTF1("Debug level: %d\r\n", debuglevel);
 }
