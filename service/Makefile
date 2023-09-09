@@ -30,7 +30,7 @@ endif
 
 all: x68kremote
 
-x68kremote: x68kremote.o
+x68kremote: x68kremote.o remoteserv.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
 x68kremote.o: ../include/x68kremote.h
