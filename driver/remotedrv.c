@@ -42,34 +42,65 @@
 struct dos_req_header *reqheader;   // Human68kからのリクエストヘッダ
 jmp_buf jenv;                       //タイムアウト時のジャンプ先
 
+static union {
+  struct cmd_check    cmd_check;
+  struct res_check    res_check;
+  struct cmd_dirop    cmd_dirop;
+  struct res_dirop    res_dirop;
+  struct cmd_rename   cmd_rename;
+  struct res_rename   res_rename;
+  struct cmd_chmod    cmd_chmod;
+  struct res_chmod    res_chmod;
+  struct cmd_files    cmd_files;
+  struct res_files    res_files;
+  struct cmd_nfiles   cmd_nfiles;
+  struct res_nfiles   res_nfiles;
+  struct cmd_create   cmd_create;
+  struct res_create   res_create;
+  struct cmd_open     cmd_open;
+  struct res_open     res_open;
+  struct cmd_close    cmd_close;
+  struct res_close    res_close;
+  struct cmd_read     cmd_read;
+  struct res_read     res_read;
+  struct cmd_write    cmd_write;
+  struct res_write    res_write;
+  struct cmd_seek     cmd_seek;
+  struct res_seek     res_seek;
+  struct cmd_filedate cmd_filedate;
+  struct res_filedate res_filedate;
+  struct cmd_dskfre   cmd_dskfre;
+  struct res_dskfre   res_dskfre;
+} b;
+
 //****************************************************************************
 // Utility routine
 //****************************************************************************
 
 ssize_t send_read(uint32_t fcb, char *buf, size_t len)
 {
-  struct cmd_read cmd;
-  struct res_read res;
-  cmd.command = 0x4c; /* read */
-  cmd.fcb = (uint32_t)fcb;
+  struct cmd_read *cmd = &b.cmd_read;
+  struct res_read *res = &b.res_read;
   ssize_t total = 0;
 
   while (len > 0) {
-    size_t size = len > sizeof(res.data) ? sizeof(res.data) : len;
-    cmd.len = size;
+    size_t size = len > sizeof(res->data) ? sizeof(res->data) : len;
+    cmd->command = 0x4c; /* read */
+    cmd->fcb = (uint32_t)fcb;
+    cmd->len = size;
 
-    com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
+    com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
 
-    DPRINTF1(" read: addr=0x%08x len=%d size=%d\r\n", (uint32_t)buf, len, res.len);
-    if (res.len < 0)
-      return res.len;
-    if (res.len == 0)
+    DPRINTF1(" read: addr=0x%08x len=%d size=%d\r\n", (uint32_t)buf, len, res->len);
+    if (res->len < 0)
+      return res->len;
+    if (res->len == 0)
       break;
 
-    memcpy(buf, res.data, res.len);
-    buf += res.len;
-    total += res.len;
-    len -= res.len;
+    memcpy(buf, res->data, res->len);
+    buf += res->len;
+    total += res->len;
+    len -= res->len;
   }
   DPRINTF1(" read: total=%d\r\n", total);
   return total;
@@ -77,31 +108,26 @@ ssize_t send_read(uint32_t fcb, char *buf, size_t len)
 
 ssize_t send_write(uint32_t fcb, char *buf, size_t len)
 {
-  static struct cmd_write cmd;
-  static struct res_write res;
-  cmd.command = 0x4d; /* write */
-  cmd.fcb = (uint32_t)fcb;
+  struct cmd_write *cmd = &b.cmd_write;
+  struct res_write *res = &b.res_write;
   ssize_t total = 0;
 
-  if (len == 0) {
-    cmd.len = len;
-    com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
-  } else {
-    while (len > 0) {
-      size_t s = len > sizeof(cmd.data) ? sizeof(cmd.data) : len;
-      memcpy(cmd.data, buf, s);
-      cmd.len = s;
+  do {
+    size_t s = len > sizeof(cmd->data) ? sizeof(cmd->data) : len;
+    cmd->command = 0x4d; /* write */
+    cmd->fcb = (uint32_t)fcb;
+    cmd->len = s;
+    memcpy(cmd->data, buf, s);
 
-      com_cmdres(&cmd, offsetof(struct cmd_write, data) + s, &res, sizeof(res));
+    com_cmdres(cmd, offsetof(struct cmd_write, data) + s, res, sizeof(*res));
 
-      DPRINTF1(" write: addr=0x%08x len=%d size=%d\r\n", (uint32_t)buf, len, res.len);
-      if (res.len < 0)
-        return res.len;
-      buf += res.len;
-      len -= res.len;
-      total += res.len;
-    }
-  }
+    DPRINTF1(" write: addr=0x%08x len=%d size=%d\r\n", (uint32_t)buf, len, res->len);
+    if (res->len < 0)
+      return res->len;
+    buf += res->len;
+    len -= res->len;
+    total += res->len;
+  } while (len > 0);
   DPRINTF1(" write: total=%d\r\n", total);
   return total;
 }
@@ -186,201 +212,204 @@ void interrupt(void)
 
   case 0x41: /* chdir */
   {
-    struct cmd_dirop cmd;
-    struct res_dirop res;
-    cmd.command = req->command;
-    memcpy(&cmd.path, req->addr, sizeof(struct dos_namestbuf));
-    com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
-    req->status = res.res;
+    struct cmd_dirop *cmd = &b.cmd_dirop;
+    struct res_dirop *res = &b.res_dirop;
+    cmd->command = req->command;
+    memcpy(&cmd->path, req->addr, sizeof(struct dos_namestbuf));
+    com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
     DNAMEPRINT(req->addr, false, "CHDIR: ");
-    DPRINTF1(" -> %d\r\n", res.res);
+    DPRINTF1(" -> %d\r\n", res->res);
+    req->status = res->res;
     break;
   }
 
   case 0x42: /* mkdir */
   {
-    struct cmd_dirop cmd;
-    struct res_dirop res;
-    cmd.command = req->command;
-    memcpy(&cmd.path, req->addr, sizeof(struct dos_namestbuf));
-    com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
-    req->status = res.res;
+    struct cmd_dirop *cmd = &b.cmd_dirop;
+    struct res_dirop *res = &b.res_dirop;
+    cmd->command = req->command;
+    memcpy(&cmd->path, req->addr, sizeof(struct dos_namestbuf));
+    com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
     DNAMEPRINT(req->addr, true, "MKDIR: ");
-    DPRINTF1(" -> %d\r\n", res.res);
+    DPRINTF1(" -> %d\r\n", res->res);
+    req->status = res->res;
     break;
   }
 
   case 0x43: /* rmdir */
   {
-    struct cmd_dirop cmd;
-    struct res_dirop res;
-    cmd.command = req->command;
-    memcpy(&cmd.path, req->addr, sizeof(struct dos_namestbuf));
-    com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
-    req->status = res.res;
+    struct cmd_dirop *cmd = &b.cmd_dirop;
+    struct res_dirop *res = &b.res_dirop;
+    cmd->command = req->command;
+    memcpy(&cmd->path, req->addr, sizeof(struct dos_namestbuf));
+    com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
     DNAMEPRINT(req->addr, true, "RMDIR: ");
-    DPRINTF1(" -> %d\r\n", res.res);
+    DPRINTF1(" -> %d\r\n", res->res);
+    req->status = res->res;
     break;
   }
 
   case 0x44: /* rename */
   {
-    struct cmd_rename cmd;
-    struct res_rename res;
-    cmd.command = req->command;
-    memcpy(&cmd.path_old, req->addr, sizeof(struct dos_namestbuf));
-    memcpy(&cmd.path_new, (void *)req->status, sizeof(struct dos_namestbuf));
-    com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
+    struct cmd_rename *cmd = &b.cmd_rename;
+    struct res_rename *res = &b.res_rename;
+    cmd->command = req->command;
+    memcpy(&cmd->path_old, req->addr, sizeof(struct dos_namestbuf));
+    memcpy(&cmd->path_new, (void *)req->status, sizeof(struct dos_namestbuf));
+    com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
     DNAMEPRINT(req->addr, true, "RENAME: ");
     DNAMEPRINT((void *)req->status, true, " to ");
-    DPRINTF1(" -> %d\r\n", res.res);
-    req->status = res.res;
+    DPRINTF1(" -> %d\r\n", res->res);
+    req->status = res->res;
     break;
   }
 
   case 0x45: /* delete */
   {
-    struct cmd_dirop cmd;
-    struct res_dirop res;
-    cmd.command = req->command;
-    memcpy(&cmd.path, req->addr, sizeof(struct dos_namestbuf));
-    com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
-    req->status = res.res;
+    struct cmd_dirop *cmd = &b.cmd_dirop;
+    struct res_dirop *res = &b.res_dirop;
+    cmd->command = req->command;
+    memcpy(&cmd->path, req->addr, sizeof(struct dos_namestbuf));
+    com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
     DNAMEPRINT(req->addr, true, "DELETE: ");
-    DPRINTF1(" -> %d\r\n", res.res);
+    DPRINTF1(" -> %d\r\n", res->res);
+    req->status = res->res;
     break;
   }
 
   case 0x46: /* chmod */
   {
-    struct cmd_chmod cmd;
-    struct res_chmod res;
-    cmd.command = req->command;
-    cmd.attr = req->attr;
-    memcpy(&cmd.path, req->addr, sizeof(struct dos_namestbuf));
-    com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
-    req->status = res.res;
+    struct cmd_chmod *cmd = &b.cmd_chmod;
+    struct res_chmod *res = &b.res_chmod;
+    cmd->command = req->command;
+    cmd->attr = req->attr;
+    memcpy(&cmd->path, req->addr, sizeof(struct dos_namestbuf));
+    com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
     DNAMEPRINT(req->addr, true, "CHMOD: ");
-    DPRINTF1(" 0x%02x -> 0x%02x\r\n", cmd.attr, res.res);
+    DPRINTF1(" 0x%02x -> 0x%02x\r\n", req->attr, res->res);
+    req->status = res->res;
     break;
   }
 
   case 0x47: /* files */
   {
-    struct cmd_files cmd;
-    static struct res_files res;
-    cmd.command = req->command;
-    cmd.attr = req->attr;
-    cmd.filep = (uint32_t)req->status;
-    memcpy(&cmd.path, req->addr, sizeof(struct dos_namestbuf));
+    struct cmd_files *cmd = &b.cmd_files;
+    struct res_files *res = &b.res_files;
+    cmd->command = req->command;
+    cmd->attr = req->attr;
+    cmd->filep = req->status;
+    memcpy(&cmd->path, req->addr, sizeof(struct dos_namestbuf));
 #if CONFIG_NFILEINFO > 1
-    struct fcache *fc = fcache_alloc(cmd.filep, true);
+    struct fcache *fc = fcache_alloc(cmd->filep, true);
     if (fc) {
-      fc->filep = cmd.filep;
+      fc->filep = cmd->filep;
       fc->cnt = 0;
-      cmd.num = CONFIG_NFILEINFO;
+      cmd->num = CONFIG_NFILEINFO;
     } else {
-      cmd.num = 1;
+      cmd->num = 1;
     }
 #endif
 
-    com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
+    com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
 
     struct dos_filbuf *fb = (struct dos_filbuf *)req->status;
 #if CONFIG_NFILEINFO > 1
     if (fc) {
-      if (res.res == 0 && res.num > 1) {
-        fc->files = res;
+      if (res->res == 0 && res->num > 1) {
+        fc->files = *res;
         fc->cnt = 1;
       } else {
         fc->filep = 0;
       }
     }
 #endif
-    memcpy(&fb->atr, &res.file[0].atr, sizeof(res.file[0]) - 1);
-    req->status = res.res;
+    if (res->res == 0)
+      memcpy(&fb->atr, &res->file[0].atr, sizeof(res->file[0]) - 1);
     DNAMEPRINT(req->addr, false, "FILES: ");
-    DPRINTF1(" attr=0x%02x filep=0x%08x -> %d %s\r\n", cmd.attr, cmd.filep, res.res, res.file[0].name);
+    DPRINTF1(" attr=0x%02x filep=0x%08x -> %d %s\r\n", req->attr, req->status, res->res, res->file[0].name);
+    req->status = res->res;
     break;
   }
 
   case 0x48: /* nfiles */
   {
-    struct cmd_nfiles cmd;
-    static struct res_nfiles res;
-    cmd.command = req->command;
-    cmd.filep = (uint32_t)req->status;
+    struct cmd_nfiles *cmd = &b.cmd_nfiles;
+    struct res_nfiles *res = &b.res_nfiles;
+    cmd->command = req->command;
+    cmd->filep = req->status;
 
     struct dos_filbuf *fb = (struct dos_filbuf *)req->status;
 #if CONFIG_NFILEINFO > 1
     struct fcache *fc;
-    if (fc = fcache_alloc(cmd.filep, false)) {
+    if (fc = fcache_alloc(cmd->filep, false)) {
       memcpy(&fb->atr, &fc->files.file[fc->cnt].atr, sizeof(fc->files.file[0]) - 1);
       fc->cnt++;
-      req->status = 0;
+      res->res = 0;
       if (fc->cnt >= fc->files.num) {
         fc->filep = 0;
       }
       goto out_nfiles;
     }
-    if (fc = fcache_alloc(cmd.filep, true)) {
-      fc->filep = cmd.filep;
+    if (fc = fcache_alloc(cmd->filep, true)) {
+      fc->filep = cmd->filep;
       fc->cnt = 0;
-      cmd.num = CONFIG_NFILEINFO;
+      cmd->num = CONFIG_NFILEINFO;
     } else {
-      cmd.num = 1;
+      cmd->num = 1;
     }
 #endif
 
-    com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
+    com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
 
 #if CONFIG_NFILEINFO > 1
     if (fc) {
-      if (res.res == 0 && res.num > 1) {
-        fc->files = *(struct res_files *)&res;
+      if (res->res == 0 && res->num > 1) {
+        fc->files = *(struct res_files *)res;
         fc->cnt = 1;
       } else {
         fc->filep = 0;
       }
     }
 #endif
-    memcpy(&fb->atr, &res.file[0].atr, sizeof(res.file[0]) - 1);
-    req->status = res.res;
+    if (res->res == 0)
+      memcpy(&fb->atr, &res->file[0].atr, sizeof(res->file[0]) - 1);
 out_nfiles:
-    DPRINTF1("NFILES: filep=0x%08x -> %d %s\r\n", cmd.filep, req->status, fb->name);
+    DPRINTF1("NFILES: filep=0x%08x -> %d %s\r\n", req->status, res->res, fb->name);
+    req->status = res->res;
     break;
   }
 
   case 0x49: /* create */
   {
-    struct cmd_create cmd;
-    struct res_create res;
-    cmd.command = req->command;
-    cmd.attr = req->attr;
-    cmd.mode = req->status;
-    cmd.fcb = (uint32_t)req->fcb;
-    memcpy(&cmd.path, req->addr, sizeof(struct dos_namestbuf));
-    com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
+    struct cmd_create *cmd = &b.cmd_create;
+    struct res_create *res = &b.res_create;
+    cmd->command = req->command;
+    cmd->attr = req->attr;
+    cmd->mode = req->status;
+    cmd->fcb = (uint32_t)req->fcb;
+    memcpy(&cmd->path, req->addr, sizeof(struct dos_namestbuf));
+    com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
     *(uint32_t *)(&((uint8_t *)req->fcb)[64]) = 0;
-    req->status = res.res;
     DNAMEPRINT(req->addr, true, "CREATE: ");
-    DPRINTF1(" fcb=0x%08x attr=0x%02x mode=%d -> %d\r\n", cmd.fcb, cmd.attr, cmd.mode, res.res);
+    DPRINTF1(" fcb=0x%08x attr=0x%02x mode=%d -> %d\r\n", (uint32_t)req->fcb, req->attr, req->status, res->res);
+    req->status = res->res;
     break;
   }
 
   case 0x4a: /* open */
   {
-    struct cmd_open cmd;
-    struct res_open res;
-    cmd.command = req->command;
-    cmd.mode = ((uint8_t *)req->fcb)[14];
-    cmd.fcb = (uint32_t)req->fcb;
-    memcpy(&cmd.path, req->addr, sizeof(struct dos_namestbuf));
-    com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
-    *(uint32_t *)(&((uint8_t *)req->fcb)[64]) = res.size;
-    req->status = res.res;
+    struct cmd_open *cmd = &b.cmd_open;
+    struct res_open *res = &b.res_open;
+    int mode = ((uint8_t *)req->fcb)[14];
+    cmd->command = req->command;
+    cmd->mode = mode;
+    cmd->fcb = (uint32_t)req->fcb;
+    memcpy(&cmd->path, req->addr, sizeof(struct dos_namestbuf));
+    com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
+    *(uint32_t *)(&((uint8_t *)req->fcb)[64]) = res->size;
     DNAMEPRINT(req->addr, true, "OPEN: ");
-    DPRINTF1(" fcb=0x%08x mode=%d -> %d\r\n", cmd.fcb, cmd.mode, res.res);
+    DPRINTF1(" fcb=0x%08x mode=%d -> %d %d\r\n", (uint32_t)req->fcb, mode, res->res, res->size);
+    req->status = res->res;
     break;
   }
 
@@ -388,13 +417,13 @@ out_nfiles:
   {
     dcache_flash((uint32_t)req->fcb, true);
 
-    struct cmd_close cmd;
-    struct res_close res;
-    cmd.command = req->command;
-    cmd.fcb = (uint32_t)req->fcb;
-    com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
-    req->status = res.res;
-    DPRINTF1("CLOSE: fcb=0x%08x\r\n", cmd.fcb);
+    struct cmd_close *cmd = &b.cmd_close;
+    struct res_close *res = &b.res_close;
+    cmd->command = req->command;
+    cmd->fcb = (uint32_t)req->fcb;
+    com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
+    DPRINTF1("CLOSE: fcb=0x%08x\r\n", (uint32_t)req->fcb);
+    req->status = res->res;
     break;
   }
 
@@ -510,57 +539,57 @@ okout_write:
   {
     dcache_flash((uint32_t)req->fcb, false);
 
-    struct cmd_seek cmd;
-    struct res_seek res;
-    cmd.command = req->command;
-    cmd.fcb = (uint32_t)req->fcb;
-    cmd.whence = req->attr;
-    cmd.offset = req->status;
+    struct cmd_seek *cmd = &b.cmd_seek;
+    struct res_seek *res = &b.res_seek;
+    cmd->command = req->command;
+    cmd->fcb = (uint32_t)req->fcb;
+    cmd->whence = req->attr;
+    cmd->offset = req->status;
 
     uint32_t pos = *(uint32_t *)(&((uint8_t *)req->fcb)[6]);
     uint32_t size = *(uint32_t *)(&((uint8_t *)req->fcb)[64]);
-    pos = (cmd.whence == 0 ? 0 : (cmd.whence == 1 ? pos : size)) + cmd.offset;
+    pos = (cmd->whence == 0 ? 0 : (cmd->whence == 1 ? pos : size)) + cmd->offset;
     if (pos > size) {   // ファイル末尾を越えてseekしようとした
-      req->status = _DOSE_CANTSEEK;
+      res->res = _DOSE_CANTSEEK;
       goto errout_seek;
     }
 
-    com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
-    *(uint32_t *)(&((uint8_t *)req->fcb)[6]) = res.res;
-    req->status = res.res;
+    com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
+    *(uint32_t *)(&((uint8_t *)req->fcb)[6]) = res->res;
 errout_seek:
-    DPRINTF1("SEEK: fcb=0x%x offset=%d whence=%d -> %d\r\n", cmd.fcb, cmd.offset, cmd.whence, res.res);
+    DPRINTF1("SEEK: fcb=0x%x offset=%d whence=%d -> %d\r\n", (uint32_t)req->fcb, req->status, req->attr, res->res);
+    req->status = res->res;
     break;
   }
 
   case 0x4f: /* filedate */
   {
-    struct cmd_filedate cmd;
-    struct res_filedate res;
-    cmd.command = req->command;
-    cmd.fcb = (uint32_t)req->fcb;
-    cmd.time = req->status & 0xffff;
-    cmd.date = req->status >> 16;
-    com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
-    req->status = res.time + (res.date << 16);
-    DPRINTF1("FILEDATE: fcb=0x%08x 0x%04x 0x%04x -> 0x%04x 0x%04x\r\n", cmd.fcb, cmd.date, cmd.time, res.date, res.time);
+    struct cmd_filedate *cmd = &b.cmd_filedate;
+    struct res_filedate *res = &b.res_filedate;
+    cmd->command = req->command;
+    cmd->fcb = (uint32_t)req->fcb;
+    cmd->time = req->status & 0xffff;
+    cmd->date = req->status >> 16;
+    com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
+    DPRINTF1("FILEDATE: fcb=0x%08x 0x%04x 0x%04x -> 0x%04x 0x%04x\r\n", (uint32_t)req->fcb, req->status >> 16, req->status & 0xffff, res->date, res->time);
+    req->status = res->time + (res->date << 16);
     break;
   }
 
   case 0x50: /* dskfre */
   {
-    struct cmd_dskfre cmd;
-    struct res_dskfre res;
-    cmd.command = req->command;
-    com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
+    struct cmd_dskfre *cmd = &b.cmd_dskfre;
+    struct res_dskfre *res = &b.res_dskfre;
+    cmd->command = req->command;
+    com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
 
     uint16_t *p = (uint16_t *)req->addr;
-    p[0] = res.freeclu;
-    p[1] = res.totalclu;
-    p[2] = res.clusect;
-    p[3] = res.sectsize;
-    req->status = res.res;
-    DPRINTF1("DSKFRE: free=%u total=%u clusect=%u sectsz=%u res=%d\r\n", res.freeclu, res.totalclu, res.clusect, res.sectsize, res.res);
+    p[0] = res->freeclu;
+    p[1] = res->totalclu;
+    p[2] = res->clusect;
+    p[3] = res->sectsize;
+    DPRINTF1("DSKFRE: free=%u total=%u clusect=%u sectsz=%u res=%d\r\n", res->freeclu, res->totalclu, res->clusect, res->sectsize, res->res);
+    req->status = res->res;
 
     break;
   }
