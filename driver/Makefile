@@ -43,8 +43,11 @@ all: SERREMOTE.SYS
 SERREMOTE.SYS: head.o serremote.o remotedrv.o
 	$(LD) -o $@ $^ -nostartfiles -s
 
-serremote.o: ../include/x68kremote.h remotedrv.h
-remotedrv.o: ../include/x68kremote.h remotedrv.h
+vpath %.h ../include
+
+head.o:      config.h
+serremote.o: config.h x68kremote.h remotedrv.h
+remotedrv.o: config.h x68kremote.h remotedrv.h
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $<

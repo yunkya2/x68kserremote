@@ -33,7 +33,10 @@ all: x68kremote
 x68kremote: x68kremote.o remoteserv.o
 	$(CC) -o $@ $^ $(LDFLAGS)
 
-x68kremote.o: ../include/x68kremote.h
+vpath %.h ../include
+
+x68kremote.o: config.h x68kremote.h remoteserv.h
+remoteserv.o: config.h x68kremote.h remoteserv.h fileop.h
 
 clean:
 	-rm -f *.o *.exe x68kremote
