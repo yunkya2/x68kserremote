@@ -28,9 +28,15 @@
 #include <stdint.h>
 
 #ifdef CONFIG_ALIGNED
-#define CONFIG_WORDALIGN  __attribute__((aligned(4)))
+#define UINT16_T  __attribute__((aligned(2))) uint16_t
+#define INT16_T   __attribute__((aligned(2))) int16_t
+#define UINT32_T  __attribute__((aligned(4))) uint32_t
+#define INT32_T   __attribute__((aligned(4))) int32_t
 #else
-#define CONFIG_WORDALIGN
+#define UINT16_T  uint16_t
+#define INT16_T   int16_t
+#define UINT32_T  uint32_t
+#define INT32_T   int32_t
 #endif
 
 #ifndef CONFIG_NFILEINFO
@@ -89,6 +95,10 @@
 //****************************************************************************
 // Human68k structures
 //****************************************************************************
+
+#define dos_fcb_mode(fcb)   (((uint8_t *)(fcb))[14])
+#define dos_fcb_fpos(fcb)   (*(uint32_t *)(&((uint8_t *)(fcb))[6]))
+#define dos_fcb_size(fcb)   (*(uint32_t *)(&((uint8_t *)(fcb))[64]))
 
 struct dos_req_header {
   uint8_t magic;       // +0x00.b  Constant (26)
@@ -164,7 +174,7 @@ struct cmd_files {
 #if CONFIG_NFILEINFO > 1
   uint8_t num;
 #endif
-  uint32_t filep  CONFIG_WORDALIGN;
+  UINT32_T filep;
   dos_namebuf path;
 } __attribute__((packed));
 struct res_files {
@@ -180,7 +190,7 @@ struct cmd_nfiles {
 #if CONFIG_NFILEINFO > 1
   uint8_t num;
 #endif
-  uint32_t filep  CONFIG_WORDALIGN;
+  UINT32_T filep;
 } __attribute__((packed));
 struct res_nfiles {
   int8_t res;
@@ -194,7 +204,7 @@ struct cmd_create {
   uint8_t command;
   uint8_t attr;
   uint8_t mode;
-  uint32_t fcb  CONFIG_WORDALIGN;
+  UINT32_T fcb;
   dos_namebuf path;
 } __attribute__((packed));
 struct res_create {
@@ -204,17 +214,17 @@ struct res_create {
 struct cmd_open {
   uint8_t command;
   uint8_t mode;
-  uint32_t fcb  CONFIG_WORDALIGN;
+  UINT32_T fcb;
   dos_namebuf path;
 } __attribute__((packed));
 struct res_open {
   int8_t res;
-  uint32_t size  CONFIG_WORDALIGN;
+  UINT32_T size;
 } __attribute__((packed));
 
 struct cmd_close {
   uint8_t command;
-  uint32_t fcb  CONFIG_WORDALIGN;
+  UINT32_T fcb;
 } __attribute__((packed));
 struct res_close {
   int8_t res;
@@ -222,54 +232,46 @@ struct res_close {
 
 struct cmd_read {
   uint8_t command;
-  uint32_t fcb  CONFIG_WORDALIGN;
-  uint16_t len;
+  UINT32_T fcb;
+  UINT32_T pos;
+  UINT16_T len;
 } __attribute__((packed));
 struct res_read {
-  int16_t len;
+  INT16_T len;
   uint8_t data[CONFIG_DATASIZE];
 } __attribute__((packed));
 
 struct cmd_write {
   uint8_t command;
-  uint32_t fcb  CONFIG_WORDALIGN;
-  uint16_t len;
+  UINT32_T fcb;
+  UINT32_T pos;
+  UINT16_T len;
   uint8_t data[CONFIG_DATASIZE];
 } __attribute__((packed));
 struct res_write {
-  int16_t len;
-} __attribute__((packed));
-
-struct cmd_seek {
-  uint8_t command;
-  uint8_t whence;
-  uint32_t fcb  CONFIG_WORDALIGN;
-  int32_t offset  CONFIG_WORDALIGN;
-} __attribute__((packed));
-struct res_seek {
-  int32_t res  CONFIG_WORDALIGN;
+  INT16_T len;
 } __attribute__((packed));
 
 struct cmd_filedate {
   uint8_t command;
-  uint32_t fcb  CONFIG_WORDALIGN;
-  uint16_t time;
-  uint16_t date;
+  UINT32_T fcb;
+  UINT16_T time;
+  UINT16_T date;
 } __attribute__((packed));
 struct res_filedate {
-  uint16_t time;
-  uint16_t date;
+  UINT16_T time;
+  UINT16_T date;
 } __attribute__((packed));
 
 struct cmd_dskfre {
   uint8_t command;
 } __attribute__((packed));
 struct res_dskfre {
-  int32_t res  CONFIG_WORDALIGN;
-  uint16_t freeclu;
-  uint16_t totalclu;
-  uint16_t clusect;
-  uint16_t sectsize;
+  INT32_T res;
+  UINT16_T freeclu;
+  UINT16_T totalclu;
+  UINT16_T clusect;
+  UINT16_T sectsize;
 } __attribute__((packed));
 
 #endif /* _X68KREMOTE_H_ */

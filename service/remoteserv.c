@@ -881,18 +881,24 @@ int op_read(uint8_t *cbuf, uint8_t *rbuf)
   struct cmd_read *cmd = (struct cmd_read *)cbuf;
   struct res_read *res = (struct res_read *)rbuf;
   TYPE_FD filefd = fi_getfd(cmd->fcb);
+  uint32_t pos = be32toh(cmd->pos);
   size_t len = be16toh(cmd->len);
+  ssize_t bytes;
 
   int err;
-  ssize_t bytes = FUNC_READ(&err, filefd, res->data, len);
-  if (bytes < 0) {
-    res->len = htobe16(conv_errno(err));
-    bytes = 0;
+  if (FUNC_LSEEK(&err, filefd, pos, SEEK_SET) < 0) {
+    res->len = htobe32(conv_errno(err));
   } else {
-    res->len = htobe16(bytes);
+    bytes = FUNC_READ(&err, filefd, res->data, len);
+    if (bytes < 0) {
+      res->len = htobe16(conv_errno(err));
+      bytes = 0;
+    } else {
+      res->len = htobe16(bytes);
+    }
   }
 
-  DPRINTF1("READ: fcb=0x%08x %d -> %d\n", cmd->fcb, len, bytes);
+  DPRINTF1("READ: fcb=0x%08x %d %d -> %d\n", cmd->fcb, pos, len, bytes);
   return offsetof(struct res_read, data) + bytes;
 }
 
@@ -903,46 +909,32 @@ int op_write(uint8_t *cbuf, uint8_t *rbuf)
   struct cmd_write *cmd = (struct cmd_write *)cbuf;
   struct res_write *res = (struct res_write *)rbuf;
   TYPE_FD filefd = fi_getfd(cmd->fcb);
+  uint32_t pos = be32toh(cmd->pos);
   size_t len = be16toh(cmd->len);
+  ssize_t bytes;
 
   int err;
   if (len == 0) {     // 0バイトのwriteはファイル長を切り詰める
-    if (FUNC_FTRUNCATE(&err, filefd, FUNC_LSEEK(NULL, filefd, 0, SEEK_CUR)) < 0) {
+    if (FUNC_FTRUNCATE(&err, filefd, pos) < 0) {
       res->len = htobe16(conv_errno(err));
     } else {
       res->len = 0;
     }
   } else {
-    ssize_t bytes = FUNC_WRITE(&err, filefd, cmd->data, len);
-    if (bytes < 0) {
-      res->len = htobe16(conv_errno(err));
+    int err;
+    if (FUNC_LSEEK(&err, filefd, pos, SEEK_SET) < 0) {
+      res->len = htobe32(conv_errno(err));
     } else {
-      res->len = htobe16(bytes);
+      bytes = FUNC_WRITE(&err, filefd, cmd->data, len);
+      if (bytes < 0) {
+        res->len = htobe16(conv_errno(err));
+      } else {
+        res->len = htobe16(bytes);
+      }
     }
   }
 
-  DPRINTF1("WRITE: fcb=0x%08x %d -> %d\n", cmd->fcb, len, be16toh(res->len));
-  return sizeof(*res);
-}
-
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
-int op_seek(uint8_t *cbuf, uint8_t *rbuf)
-{
-  struct cmd_seek *cmd = (struct cmd_seek *)cbuf;
-  struct res_seek *res = (struct res_seek *)rbuf;
-  TYPE_FD filefd = fi_getfd(cmd->fcb);
-
-  res->res = 0;
-
-  int err;
-  off_t off = FUNC_LSEEK(&err, filefd, (int32_t)be32toh(cmd->offset), cmd->whence);
-  if (off < 0) {
-    res->res = htobe32(conv_errno(err));
-  } else {
-    res->res = htobe32(off);
-  }
-  DPRINTF1("SEEK: fcb=0x%x offset=%d whence=%d -> %d\n", cmd->fcb, be32toh(cmd->offset), cmd->whence, be32toh(res->res));
+  DPRINTF1("WRITE: fcb=0x%08x %d %d -> %d\n", cmd->fcb, pos, len, bytes);
   return sizeof(*res);
 }
 
@@ -1054,9 +1046,6 @@ int remote_serv(uint8_t *cbuf, uint8_t *rbuf)
     break;
   case 0x4d: /* write */
     rsize = op_write(cbuf, rbuf);
-    break;
-  case 0x4e: /* seek */
-    rsize = op_seek(cbuf, rbuf);
     break;
   case 0x4f: /* filedate */
     rsize = op_filedate(cbuf, rbuf);

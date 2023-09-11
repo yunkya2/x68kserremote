@@ -65,8 +65,6 @@ static union {
   struct res_read     res_read;
   struct cmd_write    cmd_write;
   struct res_write    res_write;
-  struct cmd_seek     cmd_seek;
-  struct res_seek     res_seek;
   struct cmd_filedate cmd_filedate;
   struct res_filedate res_filedate;
   struct cmd_dskfre   cmd_dskfre;
@@ -77,7 +75,7 @@ static union {
 // Utility routine
 //****************************************************************************
 
-ssize_t send_read(uint32_t fcb, char *buf, size_t len)
+ssize_t send_read(uint32_t fcb, char *buf, uint32_t pos, size_t len)
 {
   struct cmd_read *cmd = &b.cmd_read;
   struct res_read *res = &b.res_read;
@@ -87,11 +85,12 @@ ssize_t send_read(uint32_t fcb, char *buf, size_t len)
     size_t size = len > sizeof(res->data) ? sizeof(res->data) : len;
     cmd->command = 0x4c; /* read */
     cmd->fcb = (uint32_t)fcb;
+    cmd->pos = pos;
     cmd->len = size;
 
     com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
 
-    DPRINTF1(" read: addr=0x%08x len=%d size=%d\r\n", (uint32_t)buf, len, res->len);
+    DPRINTF1(" read: addr=0x%08x pos=%d len=%d size=%d\r\n", (uint32_t)buf, pos, len, res->len);
     if (res->len < 0)
       return res->len;
     if (res->len == 0)
@@ -100,33 +99,36 @@ ssize_t send_read(uint32_t fcb, char *buf, size_t len)
     memcpy(buf, res->data, res->len);
     buf += res->len;
     total += res->len;
+    pos += res->len;
     len -= res->len;
   }
   DPRINTF1(" read: total=%d\r\n", total);
   return total;
 }
 
-ssize_t send_write(uint32_t fcb, char *buf, size_t len)
+ssize_t send_write(uint32_t fcb, char *buf, uint32_t pos, size_t len)
 {
   struct cmd_write *cmd = &b.cmd_write;
   struct res_write *res = &b.res_write;
   ssize_t total = 0;
 
   do {
-    size_t s = len > sizeof(cmd->data) ? sizeof(cmd->data) : len;
+    size_t size = len > sizeof(cmd->data) ? sizeof(cmd->data) : len;
     cmd->command = 0x4d; /* write */
     cmd->fcb = (uint32_t)fcb;
-    cmd->len = s;
-    memcpy(cmd->data, buf, s);
+    cmd->pos = pos;
+    cmd->len = size;
+    memcpy(cmd->data, buf, size);
 
-    com_cmdres(cmd, offsetof(struct cmd_write, data) + s, res, sizeof(*res));
+    com_cmdres(cmd, offsetof(struct cmd_write, data) + size, res, sizeof(*res));
 
-    DPRINTF1(" write: addr=0x%08x len=%d size=%d\r\n", (uint32_t)buf, len, res->len);
+    DPRINTF1(" write: addr=0x%08x pos=%d len=%d size=%d\r\n", (uint32_t)buf, pos, len, res->len);
     if (res->len < 0)
       return res->len;
     buf += res->len;
-    len -= res->len;
     total += res->len;
+    pos += res->len;
+    len -= res->len;
   } while (len > 0);
   DPRINTF1(" write: total=%d\r\n", total);
   return total;
@@ -134,11 +136,24 @@ ssize_t send_write(uint32_t fcb, char *buf, size_t len)
 
 struct dcache {
   uint32_t fcb;
-  uint32_t offset;
+  uint32_t pos;
   int16_t len;
   bool dirty;
   uint8_t cache[CONFIG_DATASIZE];
 } dcache[CONFIG_NDCACHE];
+
+struct dcache *dcache_alloc(uint32_t fcb)
+{
+  for (int i = 0; i < CONFIG_NDCACHE; i++) {
+    if (dcache[i].fcb == fcb)
+      return &dcache[i];
+  }
+  for (int i = 0; i < CONFIG_NDCACHE; i++) {
+    if (dcache[i].fcb == 0)
+      return &dcache[i];
+  }
+  return NULL;
+}
 
 int dcache_flash(uint32_t fcb, bool clean)
 {
@@ -146,7 +161,7 @@ int dcache_flash(uint32_t fcb, bool clean)
   for (int i = 0; i < CONFIG_NDCACHE; i++) {
     if (dcache[i].fcb == fcb) {
       if (dcache[i].dirty) {
-        if (send_write(dcache[i].fcb, dcache[i].cache, dcache[i].len) < 0)
+        if (send_write(dcache[i].fcb, dcache[i].cache, dcache[i].pos, dcache[i].len) < 0)
           res = -1;
         dcache[i].dirty = false;
       }
@@ -389,7 +404,7 @@ out_nfiles:
     cmd->fcb = (uint32_t)req->fcb;
     memcpy(&cmd->path, req->addr, sizeof(struct dos_namestbuf));
     com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
-    *(uint32_t *)(&((uint8_t *)req->fcb)[64]) = 0;
+    dos_fcb_size(req->fcb) = 0;
     DNAMEPRINT(req->addr, true, "CREATE: ");
     DPRINTF1(" fcb=0x%08x attr=0x%02x mode=%d -> %d\r\n", (uint32_t)req->fcb, req->attr, req->status, res->res);
     req->status = res->res;
@@ -400,13 +415,13 @@ out_nfiles:
   {
     struct cmd_open *cmd = &b.cmd_open;
     struct res_open *res = &b.res_open;
-    int mode = ((uint8_t *)req->fcb)[14];
+    int mode = dos_fcb_mode(req->fcb);
     cmd->command = req->command;
     cmd->mode = mode;
     cmd->fcb = (uint32_t)req->fcb;
     memcpy(&cmd->path, req->addr, sizeof(struct dos_namestbuf));
     com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
-    *(uint32_t *)(&((uint8_t *)req->fcb)[64]) = res->size;
+    dos_fcb_size(req->fcb) = res->size;
     DNAMEPRINT(req->addr, true, "OPEN: ");
     DPRINTF1(" fcb=0x%08x mode=%d -> %d %d\r\n", (uint32_t)req->fcb, mode, res->res, res->size);
     req->status = res->res;
@@ -431,48 +446,45 @@ out_nfiles:
   {
     dcache_flash((uint32_t)req->fcb, false);
 
-    uint32_t *pp = (uint32_t *)(&((uint8_t *)req->fcb)[6]);
-
+    uint32_t *pp = &dos_fcb_fpos(req->fcb);
     char *buf = (char *)req->addr;
     size_t len = (size_t)req->status;
     ssize_t size = 0;
+    struct dcache *d;
+    
+    if (d = dcache_alloc((uint32_t)req->fcb)) {
+      // キャッシュが未使用または自分のデータが入っている場合
+      do {
+        if (d->fcb == (uint32_t)req->fcb &&
+            *pp >= d->pos && *pp < d->pos + d->len) {
+          // これから読むデータがキャッシュに入っている場合、キャッシュから読めるだけ読む
+          size_t clen = d->pos + d->len - *pp;   // キャッシュから読めるサイズ
+          clen = clen < len ? clen : len;
 
-    for (int i = 0; i < CONFIG_NDCACHE; i++) {
-      if (dcache[i].fcb == 0 || dcache[i].fcb == (uint32_t)req->fcb) {
-        // キャッシュが未使用または自分のデータが入っている場合
-        do {
-          if (dcache[i].fcb == (uint32_t)req->fcb &&
-              *pp >= dcache[i].offset && *pp < dcache[i].offset + dcache[i].len) {
-            // これから読むデータがキャッシュに入っている場合、キャッシュから読めるだけ読む
-            size_t clen = dcache[i].offset + dcache[i].len - *pp;
-            clen = clen < len ? clen : len;
-
-            memcpy(buf, dcache[i].cache + (*pp - dcache[i].offset), clen);
-            buf += clen;
-            len -= clen;
-            size += clen;
-            *pp += clen;    // FCBのファイルポインタを進める
-          }
-          if (len == 0 || len >= sizeof(dcache[i].cache))
-            break;
-          // キャッシュサイズ未満の読み込みならキャッシュを充填
-          dcache_flash((uint32_t)req->fcb, true);
-          dcache[i].len = send_read((uint32_t)req->fcb, dcache[i].cache, sizeof(dcache[i].cache));
-          if (dcache[i].len < 0) {
-            size = -1;
-            goto errout_read;
-          }
-          dcache[i].fcb = (uint32_t)req->fcb;
-          dcache[i].offset = *pp;
-          dcache[i].dirty = false;
-        } while (dcache[i].len > 0);
-        break;
-      }
+          memcpy(buf, d->cache + (*pp - d->pos), clen);
+          buf += clen;
+          len -= clen;
+          size += clen;
+          *pp += clen;    // FCBのファイルポインタを進める
+        }
+        if (len == 0 || len >= sizeof(d->cache))
+          break;
+        // キャッシュサイズ未満の読み込みならキャッシュを充填
+        dcache_flash((uint32_t)req->fcb, true);
+        d->len = send_read((uint32_t)req->fcb, d->cache, *pp, sizeof(d->cache));
+        if (d->len < 0) {
+          size = -1;
+          goto errout_read;
+        }
+        d->fcb = (uint32_t)req->fcb;
+        d->pos = *pp;
+        d->dirty = false;
+      } while (d->len > 0);
     }
 
     if (len > 0) {
       size_t rlen;
-      rlen = send_read((uint32_t)req->fcb, buf, len);
+      rlen = send_read((uint32_t)req->fcb, buf, *pp, len);
       if (rlen < 0) {
         size = -1;
         goto errout_read;
@@ -489,37 +501,37 @@ errout_read:
 
   case 0x4d: /* write */
   {
-    uint32_t *pp = (uint32_t *)(&((uint8_t *)req->fcb)[6]);
-    uint32_t *sp = (uint32_t *)(&((uint8_t *)req->fcb)[64]);
+    uint32_t *pp = &dos_fcb_fpos(req->fcb);
+    uint32_t *sp = &dos_fcb_size(req->fcb);
     size_t len = (uint32_t)req->status;
+    struct dcache *d;
 
     if (len > 0 && len < sizeof(dcache[0].cache)) {  // 書き込みサイズがキャッシュサイズ未満
-      for (int i = 0; i < CONFIG_NDCACHE; i++) {
-        if (dcache[i].fcb == (uint32_t)req->fcb) {     //キャッシュに自分のデータが入っている
-          if ((*pp = dcache[i].offset + dcache[i].len) &&
-              ((*pp + len) <= (dcache[i].offset + sizeof(dcache[i].cache)))) {
+      if (d = dcache_alloc((uint32_t)req->fcb)) {
+        // キャッシュが未使用または自分のデータが入っている場合
+        if (d->fcb == (uint32_t)req->fcb) {         //キャッシュに自分のデータが入っている
+          if ((*pp = d->pos + d->len) &&
+              ((*pp + len) <= (d->pos + sizeof(d->cache)))) {
             // 書き込みデータがキャッシュに収まる場合はキャッシュに書く
-            memcpy(dcache[i].cache + dcache[i].len, (char *)req->addr, len);
-            dcache[i].len += len;
+            memcpy(d->cache + d->len, (char *)req->addr, len);
+            d->len += len;
             goto okout_write;
           } else {    //キャッシュに収まらないのでフラッシュ
             dcache_flash((uint32_t)req->fcb, true);
           }
         }
-        if (dcache[i].fcb == 0) {    //キャッシュが未使用
-          // 書き込みデータをキャッシュに書く
-          dcache[i].fcb = (uint32_t)req->fcb;
-          dcache[i].offset = *pp;
-          memcpy(dcache[i].cache, (char *)req->addr, len);
-          dcache[i].len = len;
-          dcache[i].dirty = true;
-          goto okout_write;
-        }
+        // 書き込みデータをキャッシュに書く
+        d->fcb = (uint32_t)req->fcb;
+        d->pos = *pp;
+        memcpy(d->cache, (char *)req->addr, len);
+        d->len = len;
+        d->dirty = true;
+        goto okout_write;
       }
     }
 
     dcache_flash((uint32_t)req->fcb, false);
-    len = send_write((uint32_t)req->fcb, (char *)req->addr, (uint32_t)req->status);
+    len = send_write((uint32_t)req->fcb, (char *)req->addr, *pp, (uint32_t)req->status);
     if (len == 0) {
       *sp = *pp;      //0バイト書き込み=truncateなのでFCBのファイルサイズをポインタ位置にする
     }
@@ -539,26 +551,18 @@ okout_write:
   {
     dcache_flash((uint32_t)req->fcb, false);
 
-    struct cmd_seek *cmd = &b.cmd_seek;
-    struct res_seek *res = &b.res_seek;
-    cmd->command = req->command;
-    cmd->fcb = (uint32_t)req->fcb;
-    cmd->whence = req->attr;
-    cmd->offset = req->status;
-
-    uint32_t pos = *(uint32_t *)(&((uint8_t *)req->fcb)[6]);
-    uint32_t size = *(uint32_t *)(&((uint8_t *)req->fcb)[64]);
-    pos = (cmd->whence == 0 ? 0 : (cmd->whence == 1 ? pos : size)) + cmd->offset;
+    int whence = req->attr;
+    int32_t offset = req->status;
+    uint32_t pos = dos_fcb_fpos(req->fcb);
+    uint32_t size = dos_fcb_size(req->fcb);
+    pos = (whence == 0 ? 0 : (whence == 1 ? pos : size)) + offset;
     if (pos > size) {   // ファイル末尾を越えてseekしようとした
-      res->res = _DOSE_CANTSEEK;
-      goto errout_seek;
+      pos = _DOSE_CANTSEEK;
+    } else {
+      dos_fcb_fpos(req->fcb) = pos;
     }
-
-    com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
-    *(uint32_t *)(&((uint8_t *)req->fcb)[6]) = res->res;
-errout_seek:
-    DPRINTF1("SEEK: fcb=0x%x offset=%d whence=%d -> %d\r\n", (uint32_t)req->fcb, req->status, req->attr, res->res);
-    req->status = res->res;
+    DPRINTF1("SEEK: fcb=0x%x offset=%d whence=%d -> %d\r\n", (uint32_t)req->fcb, offset, whence, pos);
+    req->status = pos;
     break;
   }
 
