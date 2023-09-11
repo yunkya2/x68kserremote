@@ -44,7 +44,14 @@ devheader:
 #endif
 
 #ifdef CONFIG_BOOTDRIVER
-    .long   0                   // (SCSI BOOTROMから書き込まれる)
+partitions:
+    .byte   0                   // (SCSI BOOTROMから書き込まれる)
+
+    .global scsiidd2
+scsiidd2:
+    .byte   0                   // (Human68kのSCSIデバイス初期化処理からd2レジスタで渡される)
+
+    .word   0
 
 // BOOT用ドライバ生成の際に設定される
 reloffset:
@@ -53,6 +60,7 @@ relsize:
     .long   0                   // 再配置データのサイズ
 bsssize:
     .long   0                   // bssセクションのサイズ
+
 devname:
     .ascii  CONFIG_DEVNAME      // device name
 #endif
@@ -103,6 +111,10 @@ loop1:
 
 interrupt_asm:
     movem.l %d0-%d2/%a0-%a2/%a5,%sp@-
+#ifdef CONFIG_BOOTDRIVER
+    lea.l   %pc@(scsiidd2),%a0
+    move.b  %d2,%a0@                // ドライバ初期化時に渡されるSCSI IDを保存
+#endif
     bsr     interrupt
     movem.l %sp@+,%d0-%d2/%a0-%a2/%a5
     rts
