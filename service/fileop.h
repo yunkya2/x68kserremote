@@ -52,6 +52,7 @@ typedef DIR TYPE_DIR;
 typedef struct dirent TYPE_DIRENT;
 typedef int TYPE_FD;
 #define FD_BADFD -1
+#define DIRENT_NAME(d)    ((d)->d_name);
 
 //****************************************************************************
 // for MinGW

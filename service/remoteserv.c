@@ -513,7 +513,7 @@ int op_files(uint8_t *cbuf, uint8_t *rbuf)
 
   //ディレクトリの一覧から属性とファイル名の条件に合うものを選ぶ
   while (d = FUNC_READDIR(NULL, dir)) {
-    char *childName = d->d_name;
+    char *childName = DIRENT_NAME(d);
 
     if (isroot) {  //ルートディレクトリのとき
       if (strcmp(childName, ".") == 0 || strcmp(childName, "..") == 0) {  //.と..を除く
