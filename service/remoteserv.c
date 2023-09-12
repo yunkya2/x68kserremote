@@ -713,6 +713,7 @@ int op_nfiles(uint8_t *cbuf, uint8_t *rbuf)
 typedef struct {
   uint32_t fcb;
   TYPE_FD fd;
+  off_t pos;
 } fdinfo_t;
 
 static fdinfo_t *fi_store;
@@ -744,13 +745,6 @@ static fdinfo_t *fi_alloc(uint32_t fcb, bool alloc)
   fi_store[fi_size - 1].fcb = fcb;
   fi_store[fi_size - 1].fd = FD_BADFD;
   return &fi_store[fi_size - 1];
-}
-
-// FCBに対応するfdを返す
-static TYPE_FD fi_getfd(uint32_t fcb)
-{
-  fdinfo_t *fi = fi_alloc(fcb, false);
-  return fi == NULL ? FD_BADFD : fi->fd;
 }
 
 // 不要になったバッファを解放する
@@ -796,6 +790,7 @@ int op_create(uint8_t *cbuf, uint8_t *rbuf)
   } else {
     fdinfo_t *fi = fi_alloc(cmd->fcb, true);
     fi->fd = filefd;
+    fi->pos = 0;
   }
 errout:
   DPRINTF1("CREATE: fcb=0x%08x attr=0x%02x mode=%d %s -> %d\n", cmd->fcb, cmd->attr, cmd->mode, path, res->res);
@@ -847,6 +842,7 @@ int op_open(uint8_t *cbuf, uint8_t *rbuf)
   } else {
     fdinfo_t *fi = fi_alloc(cmd->fcb, true);
     fi->fd = filefd;
+    fi->pos = 0;
     uint32_t len = FUNC_LSEEK(NULL, filefd, 0, SEEK_END);
     FUNC_LSEEK(NULL, filefd, 0, SEEK_SET);
     res->size = htobe32(len);
@@ -862,14 +858,21 @@ int op_close(uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_close *cmd = (struct cmd_close *)cbuf;
   struct res_close *res = (struct res_close *)rbuf;
-  TYPE_FD filefd = fi_getfd(cmd->fcb);
-
+  fdinfo_t *fi = fi_alloc(cmd->fcb, false);
   res->res = 0;
 
-  fi_free(cmd->fcb);
-  int err;
-  FUNC_CLOSE(&err, filefd);
+  if (!fi) {
+    res->res = _DOSE_BADF;
+    goto errout;
+  }
 
+  int err;
+  if (FUNC_CLOSE(&err, fi->fd) < 0) {
+    res->res = conv_errno(err);
+  }
+
+errout:
+  fi_free(cmd->fcb);
   DPRINTF1("CLOSE: fcb=0x%08x\n", cmd->fcb);
   return sizeof(*res);
 }
@@ -880,24 +883,33 @@ int op_read(uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_read *cmd = (struct cmd_read *)cbuf;
   struct res_read *res = (struct res_read *)rbuf;
-  TYPE_FD filefd = fi_getfd(cmd->fcb);
+  fdinfo_t *fi = fi_alloc(cmd->fcb, false);
   uint32_t pos = be32toh(cmd->pos);
   size_t len = be16toh(cmd->len);
-  ssize_t bytes;
+  ssize_t bytes = 0;
 
-  int err;
-  if (FUNC_LSEEK(&err, filefd, pos, SEEK_SET) < 0) {
-    res->len = htobe32(conv_errno(err));
-  } else {
-    bytes = FUNC_READ(&err, filefd, res->data, len);
-    if (bytes < 0) {
-      res->len = htobe16(conv_errno(err));
-      bytes = 0;
-    } else {
-      res->len = htobe16(bytes);
-    }
+  if (!fi) {
+    res->len = _DOSE_BADF;
+    goto errout;
   }
 
+  int err;
+  if (fi->pos != pos) {
+    if (FUNC_LSEEK(&err, fi->fd, pos, SEEK_SET) < 0) {
+      res->len = htobe32(conv_errno(err));
+      goto errout;
+    }
+  }
+  bytes = FUNC_READ(&err, fi->fd, res->data, len);
+  if (bytes < 0) {
+    res->len = htobe16(conv_errno(err));
+    bytes = 0;
+  } else {
+    res->len = htobe16(bytes);
+    fi->pos += bytes;
+  }
+
+errout:
   DPRINTF1("READ: fcb=0x%08x %d %d -> %d\n", cmd->fcb, pos, len, bytes);
   return offsetof(struct res_read, data) + bytes;
 }
@@ -908,32 +920,40 @@ int op_write(uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_write *cmd = (struct cmd_write *)cbuf;
   struct res_write *res = (struct res_write *)rbuf;
-  TYPE_FD filefd = fi_getfd(cmd->fcb);
+  fdinfo_t *fi = fi_alloc(cmd->fcb, false);
   uint32_t pos = be32toh(cmd->pos);
   size_t len = be16toh(cmd->len);
   ssize_t bytes;
 
+  if (!fi) {
+    res->len = _DOSE_BADF;
+    goto errout;
+  }
+
   int err;
   if (len == 0) {     // 0バイトのwriteはファイル長を切り詰める
-    if (FUNC_FTRUNCATE(&err, filefd, pos) < 0) {
+    if (FUNC_FTRUNCATE(&err, fi->fd, pos) < 0) {
       res->len = htobe16(conv_errno(err));
     } else {
       res->len = 0;
     }
   } else {
-    int err;
-    if (FUNC_LSEEK(&err, filefd, pos, SEEK_SET) < 0) {
-      res->len = htobe32(conv_errno(err));
-    } else {
-      bytes = FUNC_WRITE(&err, filefd, cmd->data, len);
-      if (bytes < 0) {
-        res->len = htobe16(conv_errno(err));
-      } else {
-        res->len = htobe16(bytes);
+    if (fi->pos != pos) {
+      if (FUNC_LSEEK(&err, fi->fd, pos, SEEK_SET) < 0) {
+        res->len = htobe32(conv_errno(err));
+        goto errout;
       }
+    }
+    bytes = FUNC_WRITE(&err, fi->fd, cmd->data, len);
+    if (bytes < 0) {
+      res->len = htobe16(conv_errno(err));
+    } else {
+      res->len = htobe16(bytes);
+      fi->pos += bytes;
     }
   }
 
+errout:
   DPRINTF1("WRITE: fcb=0x%08x %d %d -> %d\n", cmd->fcb, pos, len, bytes);
   return sizeof(*res);
 }
@@ -944,13 +964,20 @@ int op_filedate(uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_filedate *cmd = (struct cmd_filedate *)cbuf;
   struct res_filedate *res = (struct res_filedate *)rbuf;
-  TYPE_FD filefd = fi_getfd(cmd->fcb);
+  fdinfo_t *fi = fi_alloc(cmd->fcb, false);
 
+  if (!fi) {
+    res->date = 0xffff;
+    res->time = _DOSE_BADF;
+    goto errout;
+  }
+
+  int err;
   if (cmd->time == 0 && cmd->date == 0) {   // 更新日時取得
-    int err;
     TYPE_STAT st;
-    if (FUNC_FSTAT(&err, filefd, &st) < 0) {
-      res->time = res->date = 0xffff;
+    if (FUNC_FSTAT(&err, fi->fd, &st) < 0) {
+      res->date = 0xffff;
+      res->time = htobe32(conv_errno(err));
     } else {
       struct dos_filesinfo fi;
       conv_statinfo(&st, &fi);
@@ -960,11 +987,16 @@ int op_filedate(uint8_t *cbuf, uint8_t *rbuf)
   } else {                                  // 更新日時設定
     uint16_t time = be16toh(cmd->time);
     uint16_t date = be16toh(cmd->date);
-    FUNC_FILEDATE(NULL, filefd, time, date);
-    res->time = 0;
-    res->date = 0;
+    if (FUNC_FILEDATE(&err, fi->fd, time, date) < 0) {
+      res->date = 0xffff;
+      res->time = htobe32(conv_errno(err));
+    } else {
+      res->date = 0;
+      res->time = 0;
+    }
   }
 
+errout:
   DPRINTF1("FILEDATE: fcb=0x%08x 0x%04x 0x%04x -> 0x%04x 0x%04x\n", cmd->fcb, be16toh(cmd->date), be16toh(cmd->time), be16toh(res->date), be16toh(res->time));
   return sizeof(*res);
 }
