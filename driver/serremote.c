@@ -220,7 +220,7 @@ void com_timeout(struct dos_req_header *req)
   recovery = true;
 }
 
-void com_init(struct dos_req_header *req)
+int com_init(struct dos_req_header *req)
 {
 #ifdef CONFIG_BOOTDRIVER
   _iocs_b_print
@@ -304,4 +304,6 @@ void com_init(struct dos_req_header *req)
   _dos_print("bps)\r\n");
 #endif
   DPRINTF1("Debug level: %d\r\n", debuglevel);
+
+  return 1;
 }

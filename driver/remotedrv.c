@@ -217,11 +217,14 @@ void interrupt(void)
   case 0x40: /* init */
   {
     req->command = 0; /* for Human68k bug workaround */
-    com_init(req);
-
-    extern char _end;
-    req->attr = 1; /* Number of units */
-    req->addr = &_end;
+    int r = com_init(req);
+    if (r >= 0) {
+      req->attr = r; /* Number of units */
+      extern char _end;
+      req->addr = &_end;
+    } else {
+      err = r;
+    }
     break;
   }
 

@@ -46,6 +46,6 @@ extern jmp_buf jenv;
 
 void com_cmdres(void *wbuf, size_t wsize, void *rbuf, size_t rsize);
 void com_timeout(struct dos_req_header *req);
-void com_init(struct dos_req_header *req);
+int com_init(struct dos_req_header *req);
 
 #endif /* _REMOTEDRV_H_ */
