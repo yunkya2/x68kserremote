@@ -611,6 +611,10 @@ int op_files(uint8_t *cbuf, uint8_t *rbuf)
 
   FUNC_CLOSEDIR(NULL, dir);
 
+#ifdef CONFIG_DIRREVERSE
+  dl->bufcnt = dl->buflen;
+#endif
+
   for (int i = 0; i < dl->buflen; i++) {
     DPRINTF2("%d %s\n", i, dl->dirbuf[i].name);
   }
@@ -620,21 +624,35 @@ int op_files(uint8_t *cbuf, uint8_t *rbuf)
   int n = sizeof(res->file) / sizeof(res->file[0]);
   n = n > cmd->num ? cmd->num : n;
   for (int i = 0; i < n; i++) {
-    if (dl->bufcnt < dl->buflen) {
-      memcpy(&res->file[i], &dl->dirbuf[dl->bufcnt], sizeof(res->file));
-      dl->bufcnt++;
+#ifdef CONFIG_DIRREVERSE
+    if (dl->bufcnt > 0) {
+      memcpy(&res->file[i], &dl->dirbuf[--dl->bufcnt], sizeof(res->file));
       res->num++;
       res->res = 0;
-    } else {
+    }
+#else
+    if (dl->bufcnt < dl->buflen) {
+      memcpy(&res->file[i], &dl->dirbuf[dl->bufcnt++], sizeof(res->file));
+      res->num++;
+      res->res = 0;
+    }
+#endif
+      else {
       break;
     }
   }
 #else
-  if (dl->bufcnt < dl->buflen) {
-    memcpy(&res->file[0], &dl->dirbuf[dl->bufcnt], sizeof(res->file[0]));
-    dl->bufcnt++;
+#ifdef CONFIG_DIRREVERSE
+  if (dl->bufcnt > 0) {
+    memcpy(&res->file[0], &dl->dirbuf[--dl->bufcnt], sizeof(res->file[0]));
     res->res = 0;
   }
+#else
+  if (dl->bufcnt < dl->buflen) {
+    memcpy(&res->file[0], &dl->dirbuf[dl->bufcnt++], sizeof(res->file[0]));
+    res->res = 0;
+  }
+#endif
 #endif
 
 errout:
@@ -648,7 +666,12 @@ errout:
   else
     DPRINTF1("(%d/%d) %s\n", dl->bufcnt, dl->buflen, res->file[0].name);
 
-  if (dl->bufcnt == dl->buflen) {   //ファイル名リストが空
+#ifdef CONFIG_DIRREVERSE
+  if (dl->bufcnt <= 0)   //ファイル名リストが空
+#else
+  if (dl->bufcnt == dl->buflen)   //ファイル名リストが空
+#endif
+  {
     dl_free(cmd->filep);
   }
   return sizeof(*res);
@@ -678,22 +701,38 @@ int op_nfiles(uint8_t *cbuf, uint8_t *rbuf)
     int n = sizeof(res->file) / sizeof(res->file[0]);
     n = n > cmd->num ? cmd->num : n;
     for (int i = 0; i < n; i++) {
-      memcpy(&res->file[i], &dl->dirbuf[dl->bufcnt], sizeof(res->file));
-      dl->bufcnt++;
+#ifdef CONFIG_DIRREVERSE
+      memcpy(&res->file[i], &dl->dirbuf[--dl->bufcnt], sizeof(res->file));
+#else
+      memcpy(&res->file[i], &dl->dirbuf[dl->bufcnt++], sizeof(res->file));
+#endif
       res->num++;
       res->res = 0;
       DPRINTF1("(%d/%d) %s\n", dl->bufcnt, dl->buflen, res->file[i].name);
-      if (dl->bufcnt == dl->buflen) {   //もう残っているファイルがない
+#ifdef CONFIG_DIRREVERSE
+      if (dl->bufcnt <= 0)   //もう残っているファイルがない
+#else
+      if (dl->bufcnt == dl->buflen)   //もう残っているファイルがない
+#endif
+      {
         dl_free(cmd->filep);
         break;
       }
     }
 #else
-    memcpy(&res->file[0], &dl->dirbuf[dl->bufcnt], sizeof(res->file[0]));
-    dl->bufcnt++;
+#ifdef CONFIG_DIRREVERSE
+    memcpy(&res->file[0], &dl->dirbuf[--dl->bufcnt], sizeof(res->file[0]));
+#else
+    memcpy(&res->file[0], &dl->dirbuf[dl->bufcnt++], sizeof(res->file[0]));
+#endif
     res->res = 0;
     DPRINTF1("(%d/%d) %s\n", dl->bufcnt, dl->buflen, res->file[0].name);
-    if (dl->bufcnt == dl->buflen) {   //もう残っているファイルがない
+#ifdef CONFIG_DIRREVERSE
+    if (dl->bufcnt <= 0)   //もう残っているファイルがない
+#else
+    if (dl->bufcnt == dl->buflen)   //もう残っているファイルがない
+#endif
+    {
       dl_free(cmd->filep);
     }
 #endif
