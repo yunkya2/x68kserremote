@@ -312,7 +312,7 @@ static inline int FUNC_FILEDATE(int *err, TYPE_FD fd, uint16_t time, uint16_t da
 // Misc functions
 //****************************************************************************
 
-static inline int FUNC_STATFS(int *err, char *path, uint64_t *total, uint64_t *free)
+static inline int FUNC_STATFS(int *err, const char *path, uint64_t *total, uint64_t *free)
 {
 #ifndef WINNT
   struct statfs sf;

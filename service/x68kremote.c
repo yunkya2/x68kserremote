@@ -46,7 +46,7 @@
 // Global type and variables
 //****************************************************************************
 
-char *rootpath = ".";
+const char *rootpath = ".";
 int debuglevel = 0;
 
 //****************************************************************************
@@ -234,7 +234,7 @@ int main(int argc, char **argv)
     } else if (device == NULL) {
       device = argv[i];
     } else {
-      rootpath = argv[i];
+      rootpath = (const char *)argv[i];
     }
   }
 
