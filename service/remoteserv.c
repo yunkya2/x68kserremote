@@ -1072,7 +1072,7 @@ int op_dskfre(uint8_t *cbuf, uint8_t *rbuf)
 
 int remote_serv(uint8_t *cbuf, uint8_t *rbuf)
 {
-  printf("----Command: 0x%02x\n", cbuf[0]);
+  DPRINTF2("----Command: 0x%02x\n", cbuf[0]);
   int rsize = -1;
 
   switch (cbuf[0]) {
