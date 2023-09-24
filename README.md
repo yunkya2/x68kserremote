@@ -55,6 +55,8 @@ X68000 Serial Remote Drive Driver (version xxxx)
     * MSYS2 MinGW x64 環境でビルドすることで、単体の Windows コンソールアプリとして実行できるようになります
     * MSYS2 MSYS 環境でもビルドは可能ですが、実行時に MSYS2 の DLL が必要になります
     * ビルド時に `WINNT` が define されていたら Windows APIを、define されていなければ POSIX API を使用します。他の POSIX API 環境 (Ubuntu や WSL など) でも動作するかも知れませんが、未確認です。
+* macOS(Homebrew 環境) でのビルドをサポートしました(@hyano さんありがとうございます)。\
+  `service` ディレクトリ内で make を行うことで macOS 側サーバをビルドできます。
 
 ## 制約事項
 
