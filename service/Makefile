@@ -26,6 +26,8 @@ GIT_REPO_VERSION=$(shell git describe --tags --always)
 CFLAGS = -g -I. -I../include -O -DGIT_REPO_VERSION=\"$(GIT_REPO_VERSION)\"
 ifeq ($(MSYSTEM),MSYS)
 LDFLAGS += -liconv
+else ifeq  ($(shell uname),Darwin)
+LDFLAGS += -liconv
 endif
 
 all: x68kremote
