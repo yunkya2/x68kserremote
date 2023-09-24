@@ -32,9 +32,16 @@
 #include <dirent.h>
 #include <time.h>
 #ifndef WINNT
+#if defined(__APPLE__) && defined(__MACH__)
+#include <iconv.h>
+#include <sys/param.h>
+#include <sys/mount.h>
+#include <libkern/OSByteOrder.h>
+#else
 #include <iconv.h>
 #include <sys/statfs.h>
 #include <endian.h>
+#endif
 #else
 #include <windows.h>
 #endif
@@ -71,6 +78,17 @@ static inline uint32_t bswap32 (uint32_t x)
 #define htobe32(x) bswap32(x)
 #define be16toh(x) bswap16(x)
 #define be32toh(x) bswap32(x)
+#endif
+
+//****************************************************************************
+// for macOS
+//****************************************************************************
+
+#if defined(__APPLE__) && defined(__MACH__)
+#define htobe16(x) OSSwapHostToBigInt16(x)
+#define htobe32(x) OSSwapHostToBigInt32(x)
+#define be16toh(x) OSSwapBigToHostInt16(x)
+#define be32toh(x) OSSwapBigToHostInt32(x)
 #endif
 
 //****************************************************************************
