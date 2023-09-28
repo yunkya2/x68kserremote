@@ -213,7 +213,9 @@ void interrupt(void)
 
   DPRINTF2("----Command: 0x%02x\r\n", req->command);
 
-  switch ((req->command) & 0x7f) {
+  req->command = (req->command & 0x1f) | ((req->unit & 7) << 5);
+
+  switch (((req->command) & 0x1f) | 0x40) {
   case 0x40: /* init */
   {
     req->command = 0; /* for Human68k bug workaround */

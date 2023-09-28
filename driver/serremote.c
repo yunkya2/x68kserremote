@@ -222,6 +222,7 @@ void com_timeout(struct dos_req_header *req)
 
 int com_init(struct dos_req_header *req)
 {
+  int units = 1;
 #ifdef CONFIG_BOOTDRIVER
   _iocs_b_print
 #else
@@ -262,6 +263,12 @@ int com_init(struct dos_req_header *req)
         if (timeout == 0)
           timeout = 500;
         break;
+      case 'u':         // /u<units> .. ユニット数設定
+        p++;
+        units = my_atoi(p);
+        if (units < 1 || units > 7)
+          units = 1;
+        break;
       }
     } else if (*p >= '0' && *p <= '9') {
       baudrate = my_atoi(p);
@@ -299,11 +306,15 @@ int com_init(struct dos_req_header *req)
 
   _dos_print("ドライブ");
   _dos_putchar('A' + *(char *)&req->fcb);
+  if (units > 1) {
+    _dos_print(":-");
+    _dos_putchar('A' + *(char *)&req->fcb + units - 1);
+  }
   _dos_print(":でRS-232Cに接続したリモートドライブが利用可能です (");
   _dos_print(baudstr);
   _dos_print("bps)\r\n");
 #endif
   DPRINTF1("Debug level: %d\r\n", debuglevel);
 
-  return 1;
+  return units;
 }

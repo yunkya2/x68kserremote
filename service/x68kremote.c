@@ -46,7 +46,7 @@
 // Global type and variables
 //****************************************************************************
 
-const char *rootpath = ".";
+const char *rootpath[8] = { "." };
 int debuglevel = 0;
 
 //****************************************************************************
@@ -222,6 +222,7 @@ int main(int argc, char **argv)
 {
   char *device = NULL;
   int baudrate = 38400;
+  int id = 0;
 
   for (int i = 1; i < argc; i++) {
     if (strcmp(argv[i], "-D") == 0) {
@@ -234,12 +235,14 @@ int main(int argc, char **argv)
     } else if (device == NULL) {
       device = argv[i];
     } else {
-      rootpath = (const char *)argv[i];
+      if (id < 8) {
+        rootpath[id++] = (const char *)argv[i];
+      }
     }
   }
 
   if (device == NULL) {
-    printf("Usage: %s [-D|-s <speed>] <COM port> [<base directory>]\n", argv[0]);
+    printf("Usage: %s [-D|-s <speed>] <COM port> [<base directory> ...]\n", argv[0]);
     return 1;
   }
 

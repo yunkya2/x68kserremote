@@ -38,7 +38,7 @@ void DPRINTF(int level, char *fmt, ...);
 #define O_BINARY 0
 #endif
 
-extern const char *rootpath;
+extern const char *rootpath[8];
 
 int remote_serv(uint8_t *wbuf, uint8_t *rbuf);
 
