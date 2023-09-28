@@ -296,9 +296,9 @@ int com_init(struct dos_req_header *req)
 
 #ifndef CONFIG_BOOTDRIVER
   if (resmode != 0) {     // サーバが応答するか確認する
-    struct cmd_check cmd;
-    struct res_check res;
-    cmd.command = 0x40; /* init */
+    struct cmd_init cmd;
+    struct res_init res;
+    cmd.command = 0x00; /* init */
     com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
     DPRINTF1("CHECK:\r\n");
   }

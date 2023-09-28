@@ -135,10 +135,10 @@ typedef struct {
 // ZRMTDSK serial communication protocol definition
 //****************************************************************************
 
-struct cmd_check {
+struct cmd_init {
   uint8_t command;
 } __attribute__((packed));
-struct res_check {
+struct res_init {
   int8_t res;
 } __attribute__((packed));
 

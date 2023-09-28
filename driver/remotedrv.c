@@ -43,8 +43,8 @@ struct dos_req_header *reqheader;   // Human68kからのリクエストヘッダ
 jmp_buf jenv;                       //タイムアウト時のジャンプ先
 
 static union {
-  struct cmd_check    cmd_check;
-  struct res_check    res_check;
+  struct cmd_init     cmd_init;
+  struct res_init     res_init;
   struct cmd_dirop    cmd_dirop;
   struct res_dirop    res_dirop;
   struct cmd_rename   cmd_rename;

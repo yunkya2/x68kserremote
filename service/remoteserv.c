@@ -43,6 +43,13 @@
 typedef char hostpath_t[256];
 
 //****************************************************************************
+// Static function declaration
+//****************************************************************************
+
+static void dl_freeall(void);
+static void fi_freeall(void);
+
+//****************************************************************************
 // Utility functions
 //****************************************************************************
 
@@ -170,13 +177,16 @@ static int conv_errno(int err)
 // Filesystem operations
 //****************************************************************************
 
-int op_check(int id, uint8_t *cbuf, uint8_t *rbuf)
+int op_init(int id, uint8_t *cbuf, uint8_t *rbuf)
 {
-  struct cmd_check *cmd = (struct cmd_check *)cbuf;
-  struct res_check *res = (struct res_check *)rbuf;
+  struct cmd_init *cmd = (struct cmd_init *)cbuf;
+  struct res_init *res = (struct res_init *)rbuf;
+
+  dl_freeall();
+  fi_freeall();
 
   res->res = 0;
-  DPRINTF1("CHECK:\n");
+  DPRINTF1("INIT:\n");
   return sizeof(*res);
 }
 
@@ -429,6 +439,17 @@ static void dl_free(uint32_t files)
       return;
     }
   }
+}
+
+static void dl_freeall(void)
+{
+  for (int i = 0; i < dl_size; i++) {
+    dirlist_t *dl = &dl_store[i];
+    free(dl->dirbuf);
+  }
+  free(dl_store);
+  dl_store = NULL;
+  dl_size = 0;
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
@@ -802,6 +823,17 @@ static void fi_free(uint32_t fcb)
   }
 }
 
+static void fi_freeall(void)
+{
+  for (int i = 0; i < fi_size; i++) {
+    if (fi_store[i].fd != FD_BADFD)
+      FUNC_CLOSE(NULL, fi_store[i].fd);
+  }
+  free(fi_store);
+  fi_store = NULL;
+  fi_size = 0;
+}
+
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 int op_create(int id, uint8_t *cbuf, uint8_t *rbuf)
@@ -1084,8 +1116,8 @@ int remote_serv(uint8_t *cbuf, uint8_t *rbuf)
   int id = cbuf[0] >> 5;
 
   switch ((cbuf[0] & 0x1f) | 0x40) {
-  case 0x40: /* check */
-    rsize = op_check(id, cbuf, rbuf);
+  case 0x40: /* init */
+    rsize = op_init(id, cbuf, rbuf);
     break;
   case 0x41: /* chdir */
     rsize = op_chdir(id, cbuf, rbuf);
