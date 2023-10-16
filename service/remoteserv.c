@@ -459,7 +459,7 @@ int op_files(int id, uint8_t *cbuf, uint8_t *rbuf)
   struct cmd_files *cmd = (struct cmd_files *)cbuf;
   struct res_files *res = (struct res_files *)rbuf;
   hostpath_t path;
-  TYPE_DIR *dir;
+  TYPE_DIR dir;
   TYPE_DIRENT *d;
   dirlist_t *dl;
   bool isroot;
@@ -506,7 +506,7 @@ int op_files(int id, uint8_t *cbuf, uint8_t *rbuf)
 
   //検索するディレクトリの一覧を取得する
   int err;
-  if ((dir = FUNC_OPENDIR(&err, path)) == NULL) {
+  if ((dir = FUNC_OPENDIR(&err, path)) == DIR_BADDIR) {
     switch (err) {
     case ENOENT:
       res->res = _DOSE_NODIR;    //ディレクトリが存在しない場合に_DOSE_NOENTを返すと正常動作しない

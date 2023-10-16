@@ -55,10 +55,11 @@ typedef struct stat TYPE_STAT;
 #define STAT_MTIME(st)    ((st)->st_mtime)
 #define STAT_ISDIR(st)    (S_ISDIR((st)->st_mode))
 
-typedef DIR TYPE_DIR;
+typedef DIR *TYPE_DIR;
 typedef struct dirent TYPE_DIRENT;
 typedef int TYPE_FD;
 #define FD_BADFD -1
+#define DIR_BADDIR NULL
 #define DIRENT_NAME(d)    ((d)->d_name);
 
 //****************************************************************************
@@ -223,21 +224,21 @@ static inline int FUNC_UNLINK(int *err, const char *path)
 // Directory operations
 //****************************************************************************
 
-static inline TYPE_DIR *FUNC_OPENDIR(int *err, const char *path)
+static inline TYPE_DIR FUNC_OPENDIR(int *err, const char *path)
 {
-  TYPE_DIR *dir = opendir(path);
+  TYPE_DIR dir = opendir(path);
   if (err)
     *err = errno;
   return dir;
 }
-static inline TYPE_DIRENT *FUNC_READDIR(int *err, TYPE_DIR *dir)
+static inline TYPE_DIRENT *FUNC_READDIR(int *err, TYPE_DIR dir)
 {
   TYPE_DIRENT *d = readdir(dir);
   if (err)
     *err = errno;
   return d;
 }
-static inline int FUNC_CLOSEDIR(int *err, TYPE_DIR *dir)
+static inline int FUNC_CLOSEDIR(int *err, TYPE_DIR dir)
 {
   int r = closedir(dir);
   if (err)
