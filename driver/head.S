@@ -44,7 +44,8 @@ devheader:
 #endif
 
 #ifdef CONFIG_BOOTDRIVER
-partitions:
+    .global bootpart            // SCSI ID0から数えて何番目のパーティションから起動するか
+bootpart:                       // Human68kが起動ドライブを決定するために使用される
     .byte   0                   // (SCSI BOOTROMから書き込まれる)
 
     .global scsiidd2
