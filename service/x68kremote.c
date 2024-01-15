@@ -49,6 +49,38 @@
 const char *rootpath[8] = { "." };
 int debuglevel = 0;
 
+union cbuf {
+  struct cmd_init     cmd_init;
+  struct cmd_dirop    cmd_dirop;
+  struct cmd_rename   cmd_rename;
+  struct cmd_chmod    cmd_chmod;
+  struct cmd_files    cmd_files;
+  struct cmd_nfiles   cmd_nfiles;
+  struct cmd_create   cmd_create;
+  struct cmd_open     cmd_open;
+  struct cmd_close    cmd_close;
+  struct cmd_read     cmd_read;
+  struct cmd_write    cmd_write;
+  struct cmd_filedate cmd_filedate;
+  struct cmd_dskfre   cmd_dskfre;
+};
+
+union rbuf {
+  struct res_init     res_init;
+  struct res_dirop    res_dirop;
+  struct res_rename   res_rename;
+  struct res_chmod    res_chmod;
+  struct res_files    res_files;
+  struct res_nfiles   res_nfiles;
+  struct res_create   res_create;
+  struct res_open     res_open;
+  struct res_close    res_close;
+  struct res_read     res_read;
+  struct res_write    res_write;
+  struct res_filedate res_filedate;
+  struct res_dskfre   res_dskfre;
+};
+
 //****************************************************************************
 // for debugging
 //****************************************************************************
@@ -255,8 +287,8 @@ int main(int argc, char **argv)
   printf("X68000 Serial Remote Drive Service (version %s)\n", GIT_REPO_VERSION);
 
   while (1) {
-    uint8_t cbuf[1024 + 8];
-    uint8_t rbuf[1024 + 8];
+    uint8_t cbuf[sizeof(union cbuf)];
+    uint8_t rbuf[sizeof(union rbuf)];
     int rsize;
 
     if (serin(fd, cbuf, sizeof(cbuf)) < 0) {
