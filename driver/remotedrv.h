@@ -43,9 +43,10 @@ void DNAMEPRINT(void *n, bool full, char *head);
 #endif
 
 extern jmp_buf jenv;
+extern int unit_base;
 
 void com_cmdres(void *wbuf, size_t wsize, void *rbuf, size_t rsize);
-void com_timeout(struct dos_req_header *req);
+int com_timeout(struct dos_req_header *req);
 int com_init(struct dos_req_header *req);
 
 #endif /* _REMOTEDRV_H_ */

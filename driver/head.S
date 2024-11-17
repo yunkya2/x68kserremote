@@ -39,11 +39,7 @@ devheader:
 
 #ifdef CONFIG_BOOTDRIVER
     .ascii  "\x01SCHDISK"       // (SCSI BOOTROMはこの名前のドライバでないと認識しない)
-#else
-    .ascii  CONFIG_DEVNAME      // device name
-#endif
 
-#ifdef CONFIG_BOOTDRIVER
     .global bootpart            // SCSI ID0から数えて何番目のパーティションから起動するか
 bootpart:                       // Human68kが起動ドライブを決定するために使用される
     .byte   0                   // (SCSI BOOTROMから書き込まれる)
@@ -63,8 +59,9 @@ bsssize:
     .long   0                   // bssセクションのサイズ
 
 devname:
-    .ascii  CONFIG_DEVNAME      // device name
 #endif
+    .ascii  CONFIG_DEVNAME      // device name
+
 
 strategy:
 #ifdef CONFIG_BOOTDRIVER
@@ -117,6 +114,11 @@ interrupt_asm:
     move.b  %d2,%a0@                // ドライバ初期化時に渡されるSCSI IDを保存
 #endif
     bsr     interrupt
+    movea.l reqheader,%a5
+    ror.w   #8,%d0
+    move.b  %d0,%a5@(4)             // errh エラーコードを設定
+    rol.w   #8,%d0
+    move.b  %d0,%a5@(3)             // errl エラーコードを設定
     movem.l %sp@+,%d0-%d2/%a0-%a2/%a5
     rts
 

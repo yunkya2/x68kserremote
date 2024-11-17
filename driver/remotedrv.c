@@ -40,7 +40,8 @@
 //****************************************************************************
 
 struct dos_req_header *reqheader;   // Human68kからのリクエストヘッダ
-jmp_buf jenv;                       //タイムアウト時のジャンプ先
+jmp_buf jenv;                       // タイムアウト時のジャンプ先
+int unit_base = 0;                  // ユニット番号のベース値
 
 static union {
   struct cmd_init     cmd_init;
@@ -201,19 +202,18 @@ struct fcache *fcache_alloc(uint32_t filep, bool new)
 // Device driver interrupt rountine
 //****************************************************************************
 
-void interrupt(void)
+int interrupt(void)
 {
   uint16_t err = 0;
   struct dos_req_header *req = reqheader;
 
   if (setjmp(jenv)) {
-    com_timeout(req);
-    return;
+    return com_timeout(req);
   }
 
   DPRINTF2("----Command: 0x%02x\r\n", req->command);
 
-  req->command = (req->command & 0x1f) | ((req->unit & 7) << 5);
+  req->command = (req->command & 0x1f) | (((req->unit + unit_base) & 7) << 5);
 
   switch (((req->command) & 0x1f) | 0x40) {
   case 0x40: /* init */
@@ -224,8 +224,9 @@ void interrupt(void)
       req->attr = r; /* Number of units */
       extern char _end;
       req->addr = &_end;
+      return 0;
     } else {
-      err = r;
+      return -r;
     }
     break;
   }
@@ -656,8 +657,7 @@ okout_write:
     break;
   }
 
-  req->errl = err & 0xff;
-  req->errh = err >> 8;
+  return err;
 }
 
 //****************************************************************************

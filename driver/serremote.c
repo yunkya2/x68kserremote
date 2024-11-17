@@ -208,16 +208,15 @@ static int my_atoi(char *p)
 // Device driver interrupt rountine
 //****************************************************************************
 
-void com_timeout(struct dos_req_header *req)
+int com_timeout(struct dos_req_header *req)
 {
   if (resmode == 1) {     // 起動時にサーバが応答しなかった
     _dos_print("リモートドライブサービスが応答しないため組み込みません\r\n");
   }
   DPRINTF1("command timeout\r\n");
-  req->errh = 0x10;
-  req->errl = 0x02;
   req->status = -1;
   recovery = true;
+  return 0x1002;
 }
 
 int com_init(struct dos_req_header *req)
