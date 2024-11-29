@@ -108,9 +108,14 @@ static int conv_namebuf(int unit, dos_namebuf *ns, bool full, hostpath_t *path)
 
   char *dst_buf = (char *)path;
   strncpy(dst_buf, rootpath[unit], sizeof(*path) - 1);
-  dst_buf += strlen(rootpath[unit]);    //マウント先パス名を前置
+  int len = strlen(rootpath[unit]);
+  if (len >= 1 && rootpath[unit][len - 1] == '/' && bb[0] == '/') {
+    len--;
+  }
+  dst_buf += len;    //マウント先パス名を前置
+
   // SJIS -> UTF-8に変換
-  size_t dst_len = sizeof(*path) - 1 - strlen(rootpath[unit]);  //パス名バッファ残りサイズ
+  size_t dst_len = sizeof(*path) - 1 - len;  //パス名バッファ残りサイズ
   char *src_buf = bb;
   size_t src_len = k;
   if (FUNC_ICONV_S2U(&src_buf, &src_len, &dst_buf, &dst_len) < 0) {
