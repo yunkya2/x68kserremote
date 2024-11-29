@@ -47,7 +47,7 @@ typedef char hostpath_t[256];
 //****************************************************************************
 
 static void dl_freeall(void);
-static void fi_freeall(void);
+static void fi_freeall(int unit);
 
 //****************************************************************************
 // Utility functions
@@ -183,7 +183,7 @@ int op_init(int unit, uint8_t *cbuf, uint8_t *rbuf)
   struct res_init *res = (struct res_init *)rbuf;
 
   dl_freeall();
-  fi_freeall();
+  fi_freeall(unit);
 
   res->res = 0;
   DPRINTF1("INIT:\n");
@@ -206,7 +206,7 @@ int op_chdir(int unit, uint8_t *cbuf, uint8_t *rbuf)
   }
 
   TYPE_STAT st;
-  int r = FUNC_STAT(NULL, path, &st);
+  int r = FUNC_STAT(unit, NULL, path, &st);
   if (r != 0 || !STAT_ISDIR(&st)) {
     res->res = _DOSE_NODIR;
   }
@@ -231,7 +231,7 @@ int op_mkdir(int unit, uint8_t *cbuf, uint8_t *rbuf)
   }
 
   int err;
-  if (FUNC_MKDIR(&err, path) < 0) {
+  if (FUNC_MKDIR(unit, &err, path) < 0) {
     switch (err) {
     case EEXIST:
       res->res = _DOSE_EXISTDIR;
@@ -262,7 +262,7 @@ int op_rmdir(int unit, uint8_t *cbuf, uint8_t *rbuf)
   }
 
   int err;
-  if (FUNC_RMDIR(&err, path) < 0) {
+  if (FUNC_RMDIR(unit, &err, path) < 0) {
     switch (err) {
     case EINVAL:
       res->res = _DOSE_ISCURDIR;
@@ -298,7 +298,7 @@ int op_rename(int unit, uint8_t *cbuf, uint8_t *rbuf)
   }
 
   int err;
-  if (FUNC_RENAME(&err, pathold, pathnew) < 0) {
+  if (FUNC_RENAME(unit, &err, pathold, pathnew) < 0) {
     switch (err) {
     case ENOTEMPTY:
       res->res = _DOSE_CANTREN;
@@ -329,7 +329,7 @@ int op_delete(int unit, uint8_t *cbuf, uint8_t *rbuf)
   }
 
   int err;
-  if (FUNC_UNLINK(&err, path) < 0) {
+  if (FUNC_UNLINK(unit, &err, path) < 0) {
     res->res = conv_errno(err);
   }
 errout:
@@ -354,13 +354,13 @@ int op_chmod(int unit, uint8_t *cbuf, uint8_t *rbuf)
   }
 
   int err;
-  if (FUNC_STAT(&err, path, &st) < 0) {
+  if (FUNC_STAT(unit, &err, path, &st) < 0) {
     res->res = conv_errno(err);
   } else {
     res->res = FUNC_FILEMODE_ATTR(&st);
   }
   if (cmd->attr != 0xff) {
-    if (FUNC_CHMOD(&err, path, FUNC_ATTR_FILEMODE(cmd->attr, &st)) < 0) {
+    if (FUNC_CHMOD(unit, &err, path, FUNC_ATTR_FILEMODE(cmd->attr, &st)) < 0) {
       res->res = conv_errno(err);
     } else {
       res->res = 0;
@@ -506,7 +506,7 @@ int op_files(int unit, uint8_t *cbuf, uint8_t *rbuf)
 
   //検索するディレクトリの一覧を取得する
   int err;
-  if ((dir = FUNC_OPENDIR(&err, path)) == DIR_BADDIR) {
+  if ((dir = FUNC_OPENDIR(unit, &err, path)) == DIR_BADDIR) {
     switch (err) {
     case ENOENT:
       res->res = _DOSE_NODIR;    //ディレクトリが存在しない場合に_DOSE_NOENTを返すと正常動作しない
@@ -537,7 +537,7 @@ int op_files(int unit, uint8_t *cbuf, uint8_t *rbuf)
   }
 
   //ディレクトリの一覧から属性とファイル名の条件に合うものを選ぶ
-  while (d = FUNC_READDIR(NULL, dir)) {
+  while (d = FUNC_READDIR(unit, NULL, dir)) {
     char *childName = DIRENT_NAME(d);
 
     if (isroot) {  //ルートディレクトリのとき
@@ -617,7 +617,7 @@ int op_files(int unit, uint8_t *cbuf, uint8_t *rbuf)
       strncat(fullpath, "/", sizeof(fullpath) - 1);
     strncat(fullpath, childName, sizeof(fullpath) - 1);
     TYPE_STAT st;
-    if (FUNC_STAT(NULL, fullpath, &st) < 0) {  // ファイル情報を取得できなかった
+    if (FUNC_STAT(unit, NULL, fullpath, &st) < 0) {  // ファイル情報を取得できなかった
       continue;
     }
     if (0xffffffffL < STAT_SIZE(&st)) {  //4GB以上のファイルは検索できないことにする
@@ -634,7 +634,7 @@ int op_files(int unit, uint8_t *cbuf, uint8_t *rbuf)
     dl->buflen++;
   }
 
-  FUNC_CLOSEDIR(NULL, dir);
+  FUNC_CLOSEDIR(unit, NULL, dir);
 
 #ifdef CONFIG_DIRREVERSE
   dl->bufcnt = dl->buflen;
@@ -784,12 +784,12 @@ static fdinfo_t *fi_store;
 static int fi_size = 0;
 
 // FCBに対応するバッファを探す
-static fdinfo_t *fi_alloc(uint32_t fcb, bool alloc)
+static fdinfo_t *fi_alloc(int unit, uint32_t fcb, bool alloc)
 {
   for (int i = 0; i < fi_size; i++) {
     if (fi_store[i].fcb == fcb) {
       if (alloc) {              // 新規作成で同じFCBを見つけたらバッファを再利用
-        FUNC_CLOSE(NULL, fi_store[i].fd);
+        FUNC_CLOSE(unit, NULL, fi_store[i].fd);
         fi_store[i].fd = FD_BADFD;
       }
       return &fi_store[i];
@@ -823,11 +823,11 @@ static void fi_free(uint32_t fcb)
   }
 }
 
-static void fi_freeall(void)
+static void fi_freeall(int unit)
 {
   for (int i = 0; i < fi_size; i++) {
     if (fi_store[i].fd != FD_BADFD)
-      FUNC_CLOSE(NULL, fi_store[i].fd);
+      FUNC_CLOSE(unit, NULL, fi_store[i].fd);
   }
   free(fi_store);
   fi_store = NULL;
@@ -853,7 +853,7 @@ int op_create(int unit, uint8_t *cbuf, uint8_t *rbuf)
   int mode = O_CREAT|O_RDWR|O_TRUNC|O_BINARY;
   mode |= cmd->mode ? 0 : O_EXCL;
   int err;
-  if ((filefd = FUNC_OPEN(&err, path, mode)) == FD_BADFD) {
+  if ((filefd = FUNC_OPEN(unit, &err, path, mode)) == FD_BADFD) {
     switch (err) {
     case ENOSPC:
       res->res = _DOSE_DIRFULL;
@@ -863,7 +863,7 @@ int op_create(int unit, uint8_t *cbuf, uint8_t *rbuf)
       break;
     }
   } else {
-    fdinfo_t *fi = fi_alloc(cmd->fcb, true);
+    fdinfo_t *fi = fi_alloc(unit, cmd->fcb, true);
     fi->fd = filefd;
     fi->pos = 0;
   }
@@ -905,7 +905,7 @@ int op_open(int unit, uint8_t *cbuf, uint8_t *rbuf)
   }
 
   int err;
-  if ((filefd = FUNC_OPEN(&err, path, mode)) == FD_BADFD) {
+  if ((filefd = FUNC_OPEN(unit, &err, path, mode)) == FD_BADFD) {
     switch (err) {
     case EINVAL:
       res->res = _DOSE_ILGARG;
@@ -915,11 +915,11 @@ int op_open(int unit, uint8_t *cbuf, uint8_t *rbuf)
       break;
     }
   } else {
-    fdinfo_t *fi = fi_alloc(cmd->fcb, true);
+    fdinfo_t *fi = fi_alloc(unit, cmd->fcb, true);
     fi->fd = filefd;
     fi->pos = 0;
-    uint32_t len = FUNC_LSEEK(NULL, filefd, 0, SEEK_END);
-    FUNC_LSEEK(NULL, filefd, 0, SEEK_SET);
+    uint32_t len = FUNC_LSEEK(unit, NULL, filefd, 0, SEEK_END);
+    FUNC_LSEEK(unit, NULL, filefd, 0, SEEK_SET);
     res->size = htobe32(len);
   }
 errout:
@@ -933,7 +933,7 @@ int op_close(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_close *cmd = (struct cmd_close *)cbuf;
   struct res_close *res = (struct res_close *)rbuf;
-  fdinfo_t *fi = fi_alloc(cmd->fcb, false);
+  fdinfo_t *fi = fi_alloc(unit, cmd->fcb, false);
   res->res = 0;
 
   if (!fi) {
@@ -942,7 +942,7 @@ int op_close(int unit, uint8_t *cbuf, uint8_t *rbuf)
   }
 
   int err;
-  if (FUNC_CLOSE(&err, fi->fd) < 0) {
+  if (FUNC_CLOSE(unit, &err, fi->fd) < 0) {
     res->res = conv_errno(err);
   }
 
@@ -958,7 +958,7 @@ int op_read(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_read *cmd = (struct cmd_read *)cbuf;
   struct res_read *res = (struct res_read *)rbuf;
-  fdinfo_t *fi = fi_alloc(cmd->fcb, false);
+  fdinfo_t *fi = fi_alloc(unit, cmd->fcb, false);
   uint32_t pos = be32toh(cmd->pos);
   size_t len = be16toh(cmd->len);
   ssize_t bytes = 0;
@@ -970,12 +970,12 @@ int op_read(int unit, uint8_t *cbuf, uint8_t *rbuf)
 
   int err;
   if (fi->pos != pos) {
-    if (FUNC_LSEEK(&err, fi->fd, pos, SEEK_SET) < 0) {
+    if (FUNC_LSEEK(unit, &err, fi->fd, pos, SEEK_SET) < 0) {
       res->len = htobe32(conv_errno(err));
       goto errout;
     }
   }
-  bytes = FUNC_READ(&err, fi->fd, res->data, len);
+  bytes = FUNC_READ(unit, &err, fi->fd, res->data, len);
   if (bytes < 0) {
     res->len = htobe16(conv_errno(err));
     bytes = 0;
@@ -995,7 +995,7 @@ int op_write(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_write *cmd = (struct cmd_write *)cbuf;
   struct res_write *res = (struct res_write *)rbuf;
-  fdinfo_t *fi = fi_alloc(cmd->fcb, false);
+  fdinfo_t *fi = fi_alloc(unit, cmd->fcb, false);
   uint32_t pos = be32toh(cmd->pos);
   size_t len = be16toh(cmd->len);
   ssize_t bytes;
@@ -1007,19 +1007,19 @@ int op_write(int unit, uint8_t *cbuf, uint8_t *rbuf)
 
   int err;
   if (len == 0) {     // 0バイトのwriteはファイル長を切り詰める
-    if (FUNC_FTRUNCATE(&err, fi->fd, pos) < 0) {
+    if (FUNC_FTRUNCATE(unit, &err, fi->fd, pos) < 0) {
       res->len = htobe16(conv_errno(err));
     } else {
       res->len = 0;
     }
   } else {
     if (fi->pos != pos) {
-      if (FUNC_LSEEK(&err, fi->fd, pos, SEEK_SET) < 0) {
+      if (FUNC_LSEEK(unit, &err, fi->fd, pos, SEEK_SET) < 0) {
         res->len = htobe32(conv_errno(err));
         goto errout;
       }
     }
-    bytes = FUNC_WRITE(&err, fi->fd, cmd->data, len);
+    bytes = FUNC_WRITE(unit, &err, fi->fd, cmd->data, len);
     if (bytes < 0) {
       res->len = htobe16(conv_errno(err));
     } else {
@@ -1039,7 +1039,7 @@ int op_filedate(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_filedate *cmd = (struct cmd_filedate *)cbuf;
   struct res_filedate *res = (struct res_filedate *)rbuf;
-  fdinfo_t *fi = fi_alloc(cmd->fcb, false);
+  fdinfo_t *fi = fi_alloc(unit, cmd->fcb, false);
 
   if (!fi) {
     res->date = 0xffff;
@@ -1050,7 +1050,7 @@ int op_filedate(int unit, uint8_t *cbuf, uint8_t *rbuf)
   int err;
   if (cmd->time == 0 && cmd->date == 0) {   // 更新日時取得
     TYPE_STAT st;
-    if (FUNC_FSTAT(&err, fi->fd, &st) < 0) {
+    if (FUNC_FSTAT(unit, &err, fi->fd, &st) < 0) {
       res->date = 0xffff;
       res->time = htobe32(conv_errno(err));
     } else {
@@ -1062,7 +1062,7 @@ int op_filedate(int unit, uint8_t *cbuf, uint8_t *rbuf)
   } else {                                  // 更新日時設定
     uint16_t time = be16toh(cmd->time);
     uint16_t date = be16toh(cmd->date);
-    if (FUNC_FILEDATE(&err, fi->fd, time, date) < 0) {
+    if (FUNC_FILEDATE(unit, &err, fi->fd, time, date) < 0) {
       res->date = 0xffff;
       res->time = htobe32(conv_errno(err));
     } else {
@@ -1091,7 +1091,7 @@ int op_dskfre(int unit, uint8_t *cbuf, uint8_t *rbuf)
   res->res = 0;
 
   if (rootpath[unit] != NULL) {
-    FUNC_STATFS(NULL, rootpath[unit], &total, &free);
+    FUNC_STATFS(unit, NULL, rootpath[unit], &total, &free);
     total = total > 0x7fffffff ? 0x7fffffff : total;
     free = free > 0x7fffffff ? 0x7fffffff : free;
     res->freeclu = htobe16(free / 32768);

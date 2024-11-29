@@ -168,7 +168,7 @@ static inline int FUNC_ATTR_FILEMODE(int attr, TYPE_STAT *st)
   return mode;
 }
 
-static inline int FUNC_CHMOD(int *err, const char *path, int mode)
+static inline int FUNC_CHMOD(int unit, int *err, const char *path, int mode)
 {
   int r = chmod(path, mode);
   if (err)
@@ -180,14 +180,14 @@ static inline int FUNC_CHMOD(int *err, const char *path, int mode)
 // Filesystem operations
 //****************************************************************************
 
-static inline int FUNC_STAT(int *err, const char *path, TYPE_STAT *st)
+static inline int FUNC_STAT(int unit, int *err, const char *path, TYPE_STAT *st)
 {
   int r = stat(path, st);
   if (err)
     *err = errno;
   return r;
 }
-static inline int FUNC_MKDIR(int *err, const char *path)
+static inline int FUNC_MKDIR(int unit, int *err, const char *path)
 {
 #ifndef WINNT
   int r = mkdir(path, 0777);
@@ -198,21 +198,21 @@ static inline int FUNC_MKDIR(int *err, const char *path)
     *err = errno;
   return r;
 }
-static inline int FUNC_RMDIR(int *err, const char *path)
+static inline int FUNC_RMDIR(int unit, int *err, const char *path)
 {
   int r = rmdir(path);
   if (err)
     *err = errno;
   return r;
 }
-static inline int FUNC_RENAME(int *err, const char *pathold, const char *pathnew)
+static inline int FUNC_RENAME(int unit, int *err, const char *pathold, const char *pathnew)
 {
   int r = rename(pathold, pathnew);
   if (err)
     *err = errno;
   return r;
 }
-static inline int FUNC_UNLINK(int *err, const char *path)
+static inline int FUNC_UNLINK(int unit, int *err, const char *path)
 {
   int r = unlink(path);
   if (err)
@@ -224,21 +224,21 @@ static inline int FUNC_UNLINK(int *err, const char *path)
 // Directory operations
 //****************************************************************************
 
-static inline TYPE_DIR FUNC_OPENDIR(int *err, const char *path)
+static inline TYPE_DIR FUNC_OPENDIR(int unit, int *err, const char *path)
 {
   TYPE_DIR dir = opendir(path);
   if (err)
     *err = errno;
   return dir;
 }
-static inline TYPE_DIRENT *FUNC_READDIR(int *err, TYPE_DIR dir)
+static inline TYPE_DIRENT *FUNC_READDIR(int unit, int *err, TYPE_DIR dir)
 {
   TYPE_DIRENT *d = readdir(dir);
   if (err)
     *err = errno;
   return d;
 }
-static inline int FUNC_CLOSEDIR(int *err, TYPE_DIR dir)
+static inline int FUNC_CLOSEDIR(int unit, int *err, TYPE_DIR dir)
 {
   int r = closedir(dir);
   if (err)
@@ -250,42 +250,42 @@ static inline int FUNC_CLOSEDIR(int *err, TYPE_DIR dir)
 // File operations
 //****************************************************************************
 
-static inline TYPE_FD FUNC_OPEN(int *err, const char *path, int flags)
+static inline TYPE_FD FUNC_OPEN(int unit, int *err, const char *path, int flags)
 {
   TYPE_FD fd = open(path, flags, 0777);
   if (err)
     *err = errno;
   return fd;
 }
-static inline int FUNC_CLOSE(int *err, TYPE_FD fd)
+static inline int FUNC_CLOSE(int unit, int *err, TYPE_FD fd)
 {
   int r = close(fd);
   if (err)
     *err = errno;
   return r;
 }
-static inline ssize_t FUNC_READ(int *err, TYPE_FD fd, void *buf, size_t count)
+static inline ssize_t FUNC_READ(int unit, int *err, TYPE_FD fd, void *buf, size_t count)
 {
   ssize_t r = read(fd, buf, count);
   if (err)
     *err = errno;
   return r;
 }
-static inline ssize_t FUNC_WRITE(int *err, TYPE_FD fd, const void *buf, size_t count)
+static inline ssize_t FUNC_WRITE(int unit, int *err, TYPE_FD fd, const void *buf, size_t count)
 {
   ssize_t r = write(fd, buf, count);
   if (err)
     *err = errno;
   return r;
 }
-static inline int FUNC_FTRUNCATE(int *err, TYPE_FD fd, off_t length)
+static inline int FUNC_FTRUNCATE(int unit, int *err, TYPE_FD fd, off_t length)
 {
   int r = ftruncate(fd, length);
   if (err)
     *err = errno;
   return r;
 }
-static inline off_t FUNC_LSEEK(int *err, TYPE_FD fd, off_t offset, int whence)
+static inline off_t FUNC_LSEEK(int unit, int *err, TYPE_FD fd, off_t offset, int whence)
 {
   off_t r = lseek(fd, offset, whence);
   if (err)
@@ -293,7 +293,7 @@ static inline off_t FUNC_LSEEK(int *err, TYPE_FD fd, off_t offset, int whence)
   return r;
 }
 
-static inline int FUNC_FSTAT(int *err, TYPE_FD fd, TYPE_STAT *st)
+static inline int FUNC_FSTAT(int unit, int *err, TYPE_FD fd, TYPE_STAT *st)
 {
   int r = fstat(fd, st);
   if (err)
@@ -301,7 +301,7 @@ static inline int FUNC_FSTAT(int *err, TYPE_FD fd, TYPE_STAT *st)
   return r;
 }
 
-static inline int FUNC_FILEDATE(int *err, TYPE_FD fd, uint16_t time, uint16_t date)
+static inline int FUNC_FILEDATE(int unit, int *err, TYPE_FD fd, uint16_t time, uint16_t date)
 {
 #ifndef WINNT
   struct tm tm;
@@ -331,7 +331,7 @@ static inline int FUNC_FILEDATE(int *err, TYPE_FD fd, uint16_t time, uint16_t da
 // Misc functions
 //****************************************************************************
 
-static inline int FUNC_STATFS(int *err, const char *path, uint64_t *total, uint64_t *free)
+static inline int FUNC_STATFS(int unit, int *err, const char *path, uint64_t *total, uint64_t *free)
 {
 #ifndef WINNT
   struct statfs sf;
