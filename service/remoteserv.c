@@ -67,12 +67,12 @@ static void conv_statinfo(TYPE_STAT *st, void *v)
 
 // namestsのパスをホストのパスに変換する
 // (derived from HFS.java by Makoto Kamada)
-static int conv_namebuf(int id, dos_namebuf *ns, bool full, hostpath_t *path)
+static int conv_namebuf(int unit, dos_namebuf *ns, bool full, hostpath_t *path)
 {
   uint8_t bb[88];   // SJISでのパス名
   int k = 0;
 
-  if (rootpath[id] == NULL) { // ホストパスが割り当てられていない
+  if (rootpath[unit] == NULL) { // ホストパスが割り当てられていない
     return -1;
   }
 
@@ -107,10 +107,10 @@ static int conv_namebuf(int id, dos_namebuf *ns, bool full, hostpath_t *path)
   }
 
   char *dst_buf = (char *)path;
-  strncpy(dst_buf, rootpath[id], sizeof(*path) - 1);
-  dst_buf += strlen(rootpath[id]);    //マウント先パス名を前置
+  strncpy(dst_buf, rootpath[unit], sizeof(*path) - 1);
+  dst_buf += strlen(rootpath[unit]);    //マウント先パス名を前置
   // SJIS -> UTF-8に変換
-  size_t dst_len = sizeof(*path) - 1 - strlen(rootpath[id]);  //パス名バッファ残りサイズ
+  size_t dst_len = sizeof(*path) - 1 - strlen(rootpath[unit]);  //パス名バッファ残りサイズ
   char *src_buf = bb;
   size_t src_len = k;
   if (FUNC_ICONV_S2U(&src_buf, &src_len, &dst_buf, &dst_len) < 0) {
@@ -177,7 +177,7 @@ static int conv_errno(int err)
 // Filesystem operations
 //****************************************************************************
 
-int op_init(int id, uint8_t *cbuf, uint8_t *rbuf)
+int op_init(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_init *cmd = (struct cmd_init *)cbuf;
   struct res_init *res = (struct res_init *)rbuf;
@@ -192,7 +192,7 @@ int op_init(int id, uint8_t *cbuf, uint8_t *rbuf)
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-int op_chdir(int id, uint8_t *cbuf, uint8_t *rbuf)
+int op_chdir(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_dirop *cmd = (struct cmd_dirop *)cbuf;
   struct res_dirop *res = (struct res_dirop *)rbuf;
@@ -200,7 +200,7 @@ int op_chdir(int id, uint8_t *cbuf, uint8_t *rbuf)
 
   res->res = 0;
 
-  if (conv_namebuf(id, &cmd->path, false, &path) < 0) {
+  if (conv_namebuf(unit, &cmd->path, false, &path) < 0) {
     res->res = _DOSE_NODIR;
     goto errout;
   }
@@ -217,7 +217,7 @@ errout:
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-int op_mkdir(int id, uint8_t *cbuf, uint8_t *rbuf)
+int op_mkdir(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_dirop *cmd = (struct cmd_dirop *)cbuf;
   struct res_dirop *res = (struct res_dirop *)rbuf;
@@ -225,7 +225,7 @@ int op_mkdir(int id, uint8_t *cbuf, uint8_t *rbuf)
 
   res->res = 0;
 
-  if (conv_namebuf(id, &cmd->path, true, &path) < 0) {
+  if (conv_namebuf(unit, &cmd->path, true, &path) < 0) {
     res->res = _DOSE_NODIR;
     goto errout;
   }
@@ -248,7 +248,7 @@ errout:
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-int op_rmdir(int id, uint8_t *cbuf, uint8_t *rbuf)
+int op_rmdir(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_dirop *cmd = (struct cmd_dirop *)cbuf;
   struct res_dirop *res = (struct res_dirop *)rbuf;
@@ -256,7 +256,7 @@ int op_rmdir(int id, uint8_t *cbuf, uint8_t *rbuf)
 
   res->res = 0;
 
-  if (conv_namebuf(id, &cmd->path, true, &path) < 0) {
+  if (conv_namebuf(unit, &cmd->path, true, &path) < 0) {
     res->res = _DOSE_NODIR;
     goto errout;
   }
@@ -279,7 +279,7 @@ errout:
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-int op_rename(int id, uint8_t *cbuf, uint8_t *rbuf)
+int op_rename(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_rename *cmd = (struct cmd_rename *)cbuf;
   struct res_rename *res = (struct res_rename *)rbuf;
@@ -288,11 +288,11 @@ int op_rename(int id, uint8_t *cbuf, uint8_t *rbuf)
 
   res->res = 0;
 
-  if (conv_namebuf(id, &cmd->path_old, true, &pathold) < 0) {
+  if (conv_namebuf(unit, &cmd->path_old, true, &pathold) < 0) {
     res->res = _DOSE_NODIR;
     goto errout;
   }
-  if (conv_namebuf(id, &cmd->path_new, true, &pathnew) < 0) {
+  if (conv_namebuf(unit, &cmd->path_new, true, &pathnew) < 0) {
     res->res = _DOSE_NODIR;
     goto errout;
   }
@@ -315,7 +315,7 @@ errout:
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-int op_delete(int id, uint8_t *cbuf, uint8_t *rbuf)
+int op_delete(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_dirop *cmd = (struct cmd_dirop *)cbuf;
   struct res_dirop *res = (struct res_dirop *)rbuf;
@@ -323,7 +323,7 @@ int op_delete(int id, uint8_t *cbuf, uint8_t *rbuf)
 
   res->res = 0;
 
-  if (conv_namebuf(id, &cmd->path, true, &path) < 0) {
+  if (conv_namebuf(unit, &cmd->path, true, &path) < 0) {
     res->res = _DOSE_NODIR;
     goto errout;
   }
@@ -339,7 +339,7 @@ errout:
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-int op_chmod(int id, uint8_t *cbuf, uint8_t *rbuf)
+int op_chmod(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_chmod *cmd = (struct cmd_chmod *)cbuf;
   struct res_chmod *res = (struct res_chmod *)rbuf;
@@ -348,7 +348,7 @@ int op_chmod(int id, uint8_t *cbuf, uint8_t *rbuf)
 
   res->res = 0;
 
-  if (conv_namebuf(id, &cmd->path, true, &path) < 0) {
+  if (conv_namebuf(unit, &cmd->path, true, &path) < 0) {
     res->res = _DOSE_NODIR;
     goto errout;
   }
@@ -454,7 +454,7 @@ static void dl_freeall(void)
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-int op_files(int id, uint8_t *cbuf, uint8_t *rbuf)
+int op_files(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_files *cmd = (struct cmd_files *)cbuf;
   struct res_files *res = (struct res_files *)rbuf;
@@ -471,7 +471,7 @@ int op_files(int id, uint8_t *cbuf, uint8_t *rbuf)
 
   dl = dl_alloc(cmd->filep, true);
 
-  if (conv_namebuf(id, &cmd->path, false, &path) < 0) {
+  if (conv_namebuf(unit, &cmd->path, false, &path) < 0) {
     res->res = _DOSE_NODIR;
     goto errout;
   }
@@ -704,7 +704,7 @@ errout:
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-int op_nfiles(int id, uint8_t *cbuf, uint8_t *rbuf)
+int op_nfiles(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_nfiles *cmd = (struct cmd_nfiles *)cbuf;
   struct res_nfiles *res = (struct res_nfiles *)rbuf;
@@ -836,7 +836,7 @@ static void fi_freeall(void)
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-int op_create(int id, uint8_t *cbuf, uint8_t *rbuf)
+int op_create(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_create *cmd = (struct cmd_create *)cbuf;
   struct res_create *res = (struct res_create *)rbuf;
@@ -845,7 +845,7 @@ int op_create(int id, uint8_t *cbuf, uint8_t *rbuf)
 
   res->res = 0;
 
-  if (conv_namebuf(id, &cmd->path, true, &path) < 0) {
+  if (conv_namebuf(unit, &cmd->path, true, &path) < 0) {
     res->res = _DOSE_NODIR;
     goto errout;
   }
@@ -874,7 +874,7 @@ errout:
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-int op_open(int id, uint8_t *cbuf, uint8_t *rbuf)
+int op_open(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_open *cmd = (struct cmd_open *)cbuf;
   struct res_open *res = (struct res_open *)rbuf;
@@ -884,7 +884,7 @@ int op_open(int id, uint8_t *cbuf, uint8_t *rbuf)
 
   res->res = 0;
 
-  if (conv_namebuf(id, &cmd->path, true, &path) < 0) {
+  if (conv_namebuf(unit, &cmd->path, true, &path) < 0) {
     res->res = _DOSE_NODIR;
     goto errout;
   }
@@ -929,7 +929,7 @@ errout:
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-int op_close(int id, uint8_t *cbuf, uint8_t *rbuf)
+int op_close(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_close *cmd = (struct cmd_close *)cbuf;
   struct res_close *res = (struct res_close *)rbuf;
@@ -954,7 +954,7 @@ errout:
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-int op_read(int id, uint8_t *cbuf, uint8_t *rbuf)
+int op_read(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_read *cmd = (struct cmd_read *)cbuf;
   struct res_read *res = (struct res_read *)rbuf;
@@ -991,7 +991,7 @@ errout:
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-int op_write(int id, uint8_t *cbuf, uint8_t *rbuf)
+int op_write(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_write *cmd = (struct cmd_write *)cbuf;
   struct res_write *res = (struct res_write *)rbuf;
@@ -1035,7 +1035,7 @@ errout:
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-int op_filedate(int id, uint8_t *cbuf, uint8_t *rbuf)
+int op_filedate(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_filedate *cmd = (struct cmd_filedate *)cbuf;
   struct res_filedate *res = (struct res_filedate *)rbuf;
@@ -1080,7 +1080,7 @@ errout:
 // Misc functions
 //****************************************************************************
 
-int op_dskfre(int id, uint8_t *cbuf, uint8_t *rbuf)
+int op_dskfre(int unit, uint8_t *cbuf, uint8_t *rbuf)
 {
   struct cmd_dskfre *cmd = (struct cmd_dskfre *)cbuf;
   struct res_dskfre *res = (struct res_dskfre *)rbuf;
@@ -1090,8 +1090,8 @@ int op_dskfre(int id, uint8_t *cbuf, uint8_t *rbuf)
   res->freeclu = res->totalclu = res->clusect = res->sectsize = 0;
   res->res = 0;
 
-  if (rootpath[id] != NULL) {
-    FUNC_STATFS(NULL, rootpath[id], &total, &free);
+  if (rootpath[unit] != NULL) {
+    FUNC_STATFS(NULL, rootpath[unit], &total, &free);
     total = total > 0x7fffffff ? 0x7fffffff : total;
     free = free > 0x7fffffff ? 0x7fffffff : free;
     res->freeclu = htobe16(free / 32768);
@@ -1113,56 +1113,56 @@ int remote_serv(uint8_t *cbuf, uint8_t *rbuf)
 {
   DPRINTF2("----Command: 0x%02x\n", cbuf[0]);
   int rsize = -1;
-  int id = cbuf[0] >> 5;
+  int unit = cbuf[0] >> 5;
 
   switch ((cbuf[0] & 0x1f) | 0x40) {
   case 0x40: /* init */
-    rsize = op_init(id, cbuf, rbuf);
+    rsize = op_init(unit, cbuf, rbuf);
     break;
   case 0x41: /* chdir */
-    rsize = op_chdir(id, cbuf, rbuf);
+    rsize = op_chdir(unit, cbuf, rbuf);
     break;
   case 0x42: /* mkdir */
-    rsize = op_mkdir(id, cbuf, rbuf);
+    rsize = op_mkdir(unit, cbuf, rbuf);
     break;
   case 0x43: /* rmdir */
-    rsize = op_rmdir(id, cbuf, rbuf);
+    rsize = op_rmdir(unit, cbuf, rbuf);
     break;
   case 0x44: /* rename */
-    rsize = op_rename(id, cbuf, rbuf);
+    rsize = op_rename(unit, cbuf, rbuf);
     break;
   case 0x45: /* remove */
-    rsize = op_delete(id, cbuf, rbuf);
+    rsize = op_delete(unit, cbuf, rbuf);
     break;
   case 0x46: /* chmod */
-    rsize = op_chmod(id, cbuf, rbuf);
+    rsize = op_chmod(unit, cbuf, rbuf);
     break;
   case 0x47: /* files */
-    rsize = op_files(id, cbuf, rbuf);
+    rsize = op_files(unit, cbuf, rbuf);
     break;
   case 0x48: /* nfiles */
-    rsize = op_nfiles(id, cbuf, rbuf);
+    rsize = op_nfiles(unit, cbuf, rbuf);
     break;
   case 0x49: /* create */
-    rsize = op_create(id, cbuf, rbuf);
+    rsize = op_create(unit, cbuf, rbuf);
     break;
   case 0x4a: /* open */
-    rsize = op_open(id, cbuf, rbuf);
+    rsize = op_open(unit, cbuf, rbuf);
     break;
   case 0x4b: /* close */
-    rsize = op_close(id, cbuf, rbuf);
+    rsize = op_close(unit, cbuf, rbuf);
     break;
   case 0x4c: /* read */
-    rsize = op_read(id, cbuf, rbuf);
+    rsize = op_read(unit, cbuf, rbuf);
     break;
   case 0x4d: /* write */
-    rsize = op_write(id, cbuf, rbuf);
+    rsize = op_write(unit, cbuf, rbuf);
     break;
   case 0x4f: /* filedate */
-    rsize = op_filedate(id, cbuf, rbuf);
+    rsize = op_filedate(unit, cbuf, rbuf);
     break;
   case 0x50: /* dskfre */
-    rsize = op_dskfre(id, cbuf, rbuf);
+    rsize = op_dskfre(unit, cbuf, rbuf);
     break;
 
   case 0x51: /* drvctrl */
