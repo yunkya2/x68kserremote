@@ -110,14 +110,18 @@ static int conv_namebuf(int unit, dos_namebuf *ns, bool full, hostpath_t *path)
   strncpy(dst_buf, rootpath[unit], sizeof(*path) - 1);
   int len = strlen(rootpath[unit]);
   if (len >= 1 && rootpath[unit][len - 1] == '/' && bb[0] == '/') {
-    len--;
+    len--;          //rootpathの末尾から'/'が連続しないようにする
   }
-  dst_buf += len;    //マウント先パス名を前置
+  dst_buf += len;   //マウント先パス名を前置
 
   // SJIS -> UTF-8に変換
   size_t dst_len = sizeof(*path) - 1 - len;  //パス名バッファ残りサイズ
   char *src_buf = bb;
   size_t src_len = k;
+  if (len == 0 && bb[0] == '/') {
+    src_buf++;      //変換後のパス名の先頭に'/'が来ないようにする
+    src_len--;
+  }
   if (FUNC_ICONV_S2U(&src_buf, &src_len, &dst_buf, &dst_len) < 0) {
     return -1;  //変換できなかった
   }
@@ -618,8 +622,10 @@ int op_files(int unit, uint8_t *cbuf, uint8_t *rbuf)
     //属性、時刻、日付、ファイルサイズを取得する
     hostpath_t fullpath;
     strcpy(fullpath, path);
-    if (strcmp(fullpath, "/") != 0)
+    int len = strlen(fullpath);
+    if (len > 0 && fullpath[len - 1] != '/') {
       strncat(fullpath, "/", sizeof(fullpath) - 1);
+    }
     strncat(fullpath, childName, sizeof(fullpath) - 1);
     TYPE_STAT st;
     if (FUNC_STAT(unit, NULL, fullpath, &st) < 0) {  // ファイル情報を取得できなかった
