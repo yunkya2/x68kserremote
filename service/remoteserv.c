@@ -789,6 +789,7 @@ typedef struct {
   uint32_t fcb;
   TYPE_FD fd;
   off_t pos;
+  int unit;
 } fdinfo_t;
 
 static fdinfo_t *fi_store;
@@ -802,6 +803,7 @@ static fdinfo_t *fi_alloc(int unit, uint32_t fcb, bool alloc)
       if (alloc) {              // 新規作成で同じFCBを見つけたらバッファを再利用
         FUNC_CLOSE(unit, NULL, fi_store[i].fd);
         fi_store[i].fd = FD_BADFD;
+        fi_store[i].unit = unit;
       }
       return &fi_store[i];
     }
@@ -812,6 +814,7 @@ static fdinfo_t *fi_alloc(int unit, uint32_t fcb, bool alloc)
   for (int i = 0; i < fi_size; i++) {
     if (fi_store[i].fcb == 0) { // 新規作成で未使用のバッファを見つけた
       fi_store[i].fcb = fcb;
+      fi_store[i].unit = unit;
       return &fi_store[i];
     }
   }
@@ -819,6 +822,7 @@ static fdinfo_t *fi_alloc(int unit, uint32_t fcb, bool alloc)
   fi_store = realloc(fi_store, sizeof(fdinfo_t) * fi_size);
   fi_store[fi_size - 1].fcb = fcb;
   fi_store[fi_size - 1].fd = FD_BADFD;
+  fi_store[fi_size - 1].unit = unit;
   return &fi_store[fi_size - 1];
 }
 
@@ -837,12 +841,12 @@ static void fi_free(uint32_t fcb)
 static void fi_freeall(int unit)
 {
   for (int i = 0; i < fi_size; i++) {
-    if (fi_store[i].fd != FD_BADFD)
+    if (fi_store[i].fd != FD_BADFD && fi_store[i].unit == unit) {
       FUNC_CLOSE(unit, NULL, fi_store[i].fd);
+      fi_store[i].fd = FD_BADFD;
+      fi_store[i].fcb = 0;
+    }
   }
-  free(fi_store);
-  fi_store = NULL;
-  fi_size = 0;
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
@@ -961,6 +965,11 @@ errout:
   fi_free(cmd->fcb);
   DPRINTF1("CLOSE: fcb=0x%08x\n", cmd->fcb);
   return sizeof(*res);
+}
+
+void op_closeall(int unit)
+{
+  fi_freeall(unit);
 }
 
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
