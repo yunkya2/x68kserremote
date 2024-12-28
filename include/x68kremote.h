@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Yuichi Nakamura (@yunkya2)
+ * Copyright (c) 2023,2024 Yuichi Nakamura (@yunkya2)
  *
  * The MIT License (MIT)
  *
@@ -50,6 +50,12 @@
 #endif
 #ifndef CONFIG_NFCACHE
 #define CONFIG_NFCACHE    1
+#endif
+
+#ifdef CONFIG_ALTCOMBUF
+/* Alternative communication buffer pointer */
+union combuf;
+extern union remote_combuf *comp;
 #endif
 
 //****************************************************************************

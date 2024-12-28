@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Yuichi Nakamura (@yunkya2)
+ * Copyright (c) 2023,2024 Yuichi Nakamura (@yunkya2)
  *
  * The MIT License (MIT)
  *
@@ -43,7 +43,7 @@ struct dos_req_header *reqheader;   // Human68kからのリクエストヘッダ
 jmp_buf jenv;                       // タイムアウト時のジャンプ先
 int unit_base = 0;                  // ユニット番号のベース値
 
-static union {
+static union remote_combuf {
   struct cmd_init     cmd_init;
   struct res_init     res_init;
   struct cmd_dirop    cmd_dirop;
@@ -72,14 +72,18 @@ static union {
   struct res_dskfre   res_dskfre;
 } b;
 
+#ifndef CONFIG_ALTCOMBUF
+static union remote_combuf * const comp = &b;
+#endif
+
 //****************************************************************************
 // Utility routine
 //****************************************************************************
 
 ssize_t send_read(uint32_t fcb, char *buf, uint32_t pos, size_t len)
 {
-  struct cmd_read *cmd = &b.cmd_read;
-  struct res_read *res = &b.res_read;
+  struct cmd_read *cmd = &comp->cmd_read;
+  struct res_read *res = &comp->res_read;
   ssize_t total = 0;
 
   while (len > 0) {
@@ -109,8 +113,8 @@ ssize_t send_read(uint32_t fcb, char *buf, uint32_t pos, size_t len)
 
 ssize_t send_write(uint32_t fcb, char *buf, uint32_t pos, size_t len)
 {
-  struct cmd_write *cmd = &b.cmd_write;
-  struct res_write *res = &b.res_write;
+  struct cmd_write *cmd = &comp->cmd_write;
+  struct res_write *res = &comp->res_write;
   ssize_t total = 0;
 
   do {
@@ -233,8 +237,8 @@ int interrupt(void)
 
   case 0x41: /* chdir */
   {
-    struct cmd_dirop *cmd = &b.cmd_dirop;
-    struct res_dirop *res = &b.res_dirop;
+    struct cmd_dirop *cmd = &comp->cmd_dirop;
+    struct res_dirop *res = &comp->res_dirop;
     cmd->command = req->command;
     memcpy(&cmd->path, req->addr, sizeof(struct dos_namestbuf));
     com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
@@ -246,8 +250,8 @@ int interrupt(void)
 
   case 0x42: /* mkdir */
   {
-    struct cmd_dirop *cmd = &b.cmd_dirop;
-    struct res_dirop *res = &b.res_dirop;
+    struct cmd_dirop *cmd = &comp->cmd_dirop;
+    struct res_dirop *res = &comp->res_dirop;
     cmd->command = req->command;
     memcpy(&cmd->path, req->addr, sizeof(struct dos_namestbuf));
     com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
@@ -259,8 +263,8 @@ int interrupt(void)
 
   case 0x43: /* rmdir */
   {
-    struct cmd_dirop *cmd = &b.cmd_dirop;
-    struct res_dirop *res = &b.res_dirop;
+    struct cmd_dirop *cmd = &comp->cmd_dirop;
+    struct res_dirop *res = &comp->res_dirop;
     cmd->command = req->command;
     memcpy(&cmd->path, req->addr, sizeof(struct dos_namestbuf));
     com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
@@ -272,8 +276,8 @@ int interrupt(void)
 
   case 0x44: /* rename */
   {
-    struct cmd_rename *cmd = &b.cmd_rename;
-    struct res_rename *res = &b.res_rename;
+    struct cmd_rename *cmd = &comp->cmd_rename;
+    struct res_rename *res = &comp->res_rename;
     cmd->command = req->command;
     memcpy(&cmd->path_old, req->addr, sizeof(struct dos_namestbuf));
     memcpy(&cmd->path_new, (void *)req->status, sizeof(struct dos_namestbuf));
@@ -287,8 +291,8 @@ int interrupt(void)
 
   case 0x45: /* delete */
   {
-    struct cmd_dirop *cmd = &b.cmd_dirop;
-    struct res_dirop *res = &b.res_dirop;
+    struct cmd_dirop *cmd = &comp->cmd_dirop;
+    struct res_dirop *res = &comp->res_dirop;
     cmd->command = req->command;
     memcpy(&cmd->path, req->addr, sizeof(struct dos_namestbuf));
     com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
@@ -300,8 +304,8 @@ int interrupt(void)
 
   case 0x46: /* chmod */
   {
-    struct cmd_chmod *cmd = &b.cmd_chmod;
-    struct res_chmod *res = &b.res_chmod;
+    struct cmd_chmod *cmd = &comp->cmd_chmod;
+    struct res_chmod *res = &comp->res_chmod;
     cmd->command = req->command;
     cmd->attr = req->attr;
     memcpy(&cmd->path, req->addr, sizeof(struct dos_namestbuf));
@@ -314,8 +318,8 @@ int interrupt(void)
 
   case 0x47: /* files */
   {
-    struct cmd_files *cmd = &b.cmd_files;
-    struct res_files *res = &b.res_files;
+    struct cmd_files *cmd = &comp->cmd_files;
+    struct res_files *res = &comp->res_files;
     cmd->command = req->command;
     cmd->attr = req->attr;
     cmd->filep = req->status;
@@ -354,8 +358,8 @@ int interrupt(void)
 
   case 0x48: /* nfiles */
   {
-    struct cmd_nfiles *cmd = &b.cmd_nfiles;
-    struct res_nfiles *res = &b.res_nfiles;
+    struct cmd_nfiles *cmd = &comp->cmd_nfiles;
+    struct res_nfiles *res = &comp->res_nfiles;
     cmd->command = req->command;
     cmd->filep = req->status;
 
@@ -402,8 +406,8 @@ out_nfiles:
 
   case 0x49: /* create */
   {
-    struct cmd_create *cmd = &b.cmd_create;
-    struct res_create *res = &b.res_create;
+    struct cmd_create *cmd = &comp->cmd_create;
+    struct res_create *res = &comp->res_create;
     cmd->command = req->command;
     cmd->attr = req->attr;
     cmd->mode = req->status;
@@ -419,8 +423,8 @@ out_nfiles:
 
   case 0x4a: /* open */
   {
-    struct cmd_open *cmd = &b.cmd_open;
-    struct res_open *res = &b.res_open;
+    struct cmd_open *cmd = &comp->cmd_open;
+    struct res_open *res = &comp->res_open;
     int mode = dos_fcb_mode(req->fcb);
     cmd->command = req->command;
     cmd->mode = mode;
@@ -438,8 +442,8 @@ out_nfiles:
   {
     dcache_flash((uint32_t)req->fcb, true);
 
-    struct cmd_close *cmd = &b.cmd_close;
-    struct res_close *res = &b.res_close;
+    struct cmd_close *cmd = &comp->cmd_close;
+    struct res_close *res = &comp->res_close;
     cmd->command = req->command;
     cmd->fcb = (uint32_t)req->fcb;
     com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
@@ -574,8 +578,8 @@ okout_write:
 
   case 0x4f: /* filedate */
   {
-    struct cmd_filedate *cmd = &b.cmd_filedate;
-    struct res_filedate *res = &b.res_filedate;
+    struct cmd_filedate *cmd = &comp->cmd_filedate;
+    struct res_filedate *res = &comp->res_filedate;
     cmd->command = req->command;
     cmd->fcb = (uint32_t)req->fcb;
     cmd->time = req->status & 0xffff;
@@ -588,8 +592,8 @@ okout_write:
 
   case 0x50: /* dskfre */
   {
-    struct cmd_dskfre *cmd = &b.cmd_dskfre;
-    struct res_dskfre *res = &b.res_dskfre;
+    struct cmd_dskfre *cmd = &comp->cmd_dskfre;
+    struct res_dskfre *res = &comp->res_dskfre;
     cmd->command = req->command;
     com_cmdres(cmd, sizeof(*cmd), res, sizeof(*res));
 
