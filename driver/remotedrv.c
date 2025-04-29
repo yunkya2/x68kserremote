@@ -525,6 +525,7 @@ errout_read:
             // 書き込みデータがキャッシュに収まる場合はキャッシュに書く
             memcpy(d->cache + d->len, (char *)req->addr, len);
             d->len += len;
+            d->dirty = true;
             goto okout_write;
           } else {    //キャッシュに収まらないのでフラッシュ
             dcache_flash((uint32_t)req->fcb, true);
