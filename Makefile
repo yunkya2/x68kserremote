@@ -40,7 +40,8 @@ RELFILE := x68kserremote-$(shell git describe --tags --always)
 
 release: all
 	rm -rf build && mkdir build
-	cp README.md build/README.txt
+	./md2txtconv.py README.md
+	mv README.txt build
 	cp $(DRIVER) build
 	cp $(SERVICE) build
 	(cd build; ../xdftool/xdftool.py c serremote.xdf SERREMOTE.SYS)
