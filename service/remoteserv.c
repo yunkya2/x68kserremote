@@ -46,7 +46,7 @@ typedef char hostpath_t[256];
 // Static function declaration
 //****************************************************************************
 
-static void dl_freeall(void);
+static void dl_freeall(int unit);
 static void fi_freeall(int unit);
 
 //****************************************************************************
@@ -191,7 +191,7 @@ int op_init(int unit, uint8_t *cbuf, uint8_t *rbuf)
   struct cmd_init *cmd = (struct cmd_init *)cbuf;
   struct res_init *res = (struct res_init *)rbuf;
 
-  dl_freeall();
+  dl_freeall(unit);
   fi_freeall(unit);
 
   res->res = 0;
@@ -390,26 +390,39 @@ errout:
 // directory list management structure
 // Human68kから渡されるFILBUFのアドレスをキーとしてディレクトリリストを管理する
 typedef struct {
-  uint32_t files;
-  struct dos_filesinfo *dirbuf;
-  int buflen;
-  int bufcnt;
+  uint32_t filep;       // FILBUFアドレス
+  int unit;             // ドライブのユニット番号
+  bool isroot;          // ルートディレクトリか
+  bool isfirst;         // 最初のディレクトリエントリか
+  uint8_t attr;         // 検索するファイル属性
+  uint8_t fname[21];    // 検索するファイル名(ワイルドカード付き)
+  TYPE_DIR dir;         // ディレクトリディスクリプタ
+  hostpath_t hostpath;  // ホスト側検索パス名
 } dirlist_t;
 
 static dirlist_t *dl_store;
 static int dl_size = 0;
 
+// 不要になったバッファを解放する
+static void dl_free(dirlist_t *dl)
+{
+  // ディレクトリがオープンされていたら閉じる
+  if (dl->dir != DIR_BADDIR) {
+    FUNC_CLOSEDIR(dl->unit, NULL, dl->dir);
+  }
+  dl->dir = DIR_BADDIR;
+  dl->filep = 0;
+}
+
 // FILBUFに対応するバッファを探す
-static dirlist_t *dl_alloc(uint32_t files, bool create)
+static dirlist_t *dl_alloc(uint32_t filep, bool create)
 {
   for (int i = 0; i < dl_size; i++) {
     dirlist_t *dl = &dl_store[i];
-    if (dl->files == files) {
+    if (dl->filep == filep) {
       if (create) {         // 新規作成で同じFILBUFを見つけたらバッファを再利用
-        free(dl->dirbuf);
-        dl->dirbuf = NULL;
-        dl->buflen = 0;
-        dl->bufcnt = 0;
+        dl_free(dl);
+        dl->filep = filep;
       }
       return dl;
     }
@@ -419,145 +432,132 @@ static dirlist_t *dl_alloc(uint32_t files, bool create)
 
   for (int i = 0; i < dl_size; i++) {
     dirlist_t *dl = &dl_store[i];
-    if (dl->files == 0) {   // 新規作成で未使用のバッファを見つけた
-      dl->files = files;
+    if (dl->filep == 0) {   // 新規作成で未使用のバッファを見つけた
+      dl->filep = filep;
+      dl->dir = DIR_BADDIR;
       return dl;
     }
   }
   dl_size++;                // バッファが不足しているので拡張する
-  dl_store = realloc(dl_store, sizeof(dirlist_t) * dl_size);
+  dirlist_t *dl_new = realloc(dl_store, sizeof(dirlist_t) * dl_size);
+  if (dl_new == NULL) {
+    dl_size--;
+    return NULL;
+  }
+  dl_store = dl_new;
   dirlist_t *dl = &dl_store[dl_size - 1];
-  dl->files = files;
-  dl->dirbuf = NULL;
-  dl->buflen = 0;
-  dl->bufcnt = 0;
+  dl->filep = filep;
+  dl->dir = DIR_BADDIR;
   return dl;
 }
 
-// 不要になったバッファを解放する
-static void dl_free(uint32_t files)
+static void dl_freeall(int unit)
 {
   for (int i = 0; i < dl_size; i++) {
     dirlist_t *dl = &dl_store[i];
-    if (dl->files == files) {
-      dl->files = 0;
-      free(dl->dirbuf);
-      dl->dirbuf = NULL;
-      dl->buflen = 0;
-      dl->bufcnt = 0;
-      return;
+    if (dl->filep != 0 && dl->unit == unit) {
+      dl_free(dl);
     }
   }
 }
 
-static void dl_freeall(void)
+static int dl_opendir(dirlist_t **dlp, int unit, struct cmd_files *cmd)
 {
-  for (int i = 0; i < dl_size; i++) {
-    dirlist_t *dl = &dl_store[i];
-    free(dl->dirbuf);
-  }
-  free(dl_store);
-  dl_store = NULL;
-  dl_size = 0;
-}
-
-/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
-
-int op_files(int unit, uint8_t *cbuf, uint8_t *rbuf)
-{
-  struct cmd_files *cmd = (struct cmd_files *)cbuf;
-  struct res_files *res = (struct res_files *)rbuf;
-  hostpath_t path;
-  TYPE_DIR dir;
-  TYPE_DIRENT *d;
   dirlist_t *dl;
-  bool isroot;
+  int res = 0;
+  *dlp = NULL;
 
-  res->res = _DOSE_NOMORE;
-#if CONFIG_NFILEINFO > 1
-  res->num = 0;
-#endif
-
-  dl = dl_alloc(cmd->filep, true);
-
-  if (conv_namebuf(unit, &cmd->path, false, &path) < 0) {
-    res->res = _DOSE_NODIR;
-    goto errout;
+  if ((dl = dl_alloc(cmd->filep, true)) == NULL) {
+    return ENOMEM;
   }
-  isroot = strcmp(cmd->path.path, "\t") == 0;
+
+  if (conv_namebuf(unit, &cmd->path, false, &dl->hostpath) < 0) {
+    dl_free(dl);
+    return ENOENT;
+  }
+  dl->unit = unit;  
+  dl->isroot = strcmp(cmd->path.path, "\t") == 0;
+  dl->isfirst = true;
+  dl->attr = cmd->attr;
 
   // (derived from HFS.java by Makoto Kamada)
   //検索するファイル名の順序を入れ替える
   //  主ファイル名1の末尾が'?'で主ファイル名2の先頭が'\0'のときは主ファイル名2を'?'で充填する
-  uint8_t w[21] = { 0 };
-  memcpy(&w[0], cmd->path.name1, 8);    //主ファイル名1
+  memset(dl->fname, 0, sizeof(dl->fname));
+  memcpy(&dl->fname[0], cmd->path.name1, 8);    //主ファイル名1
   if (cmd->path.name1[7] == '?' && cmd->path.name2[0] == '\0') {  //主ファイル名1の末尾が'?'で主ファイル名2の先頭が'\0'
-    memset(&w[8], '?', 10);           //主ファイル名2
+    memset(&dl->fname[8], '?', 10);           //主ファイル名2
   } else {
-    memcpy(&w[8], cmd->path.name2, 10); //主ファイル名2
+    memcpy(&dl->fname[8], cmd->path.name2, 10); //主ファイル名2
   }
-  for (int i = 17; i >= 0 && (w[i] == '\0' || w[i] == ' '); i--) {  //主ファイル名1+主ファイル名2の空き
-    w[i] = '\0';
+  for (int i = 17; i >= 0 && (dl->fname[i] == '\0' || dl->fname[i] == ' '); i--) {  //主ファイル名1+主ファイル名2の空き
+    dl->fname[i] = '\0';
   }
-  memcpy(&w[18], cmd->path.ext, 3);     //拡張子
-  for (int i = 20; i >= 18 && (w[i] == ' '); i--) { //拡張子の空き
-    w[i] = '\0';
+  memcpy(&dl->fname[18], cmd->path.ext, 3);     //拡張子
+  for (int i = 20; i >= 18 && (dl->fname[i] == ' '); i--) { //拡張子の空き
+    dl->fname[i] = '\0';
   }
   //検索するファイル名を小文字化する
   for (int i = 0; i < 21; i++) {
-    int c = w[i];
+    int c = dl->fname[i];
     if (0x81 <= c && c <= 0x9f || 0xe0 <= c && c <= 0xef) {  //SJISの1バイト目
       i++;
     } else {
-      w[i] = tolower(w[i]);
+      dl->fname[i] = tolower(dl->fname[i]);
     }
   }
 
-  //検索するディレクトリの一覧を取得する
+  DPRINTF2("dl_opendir: %02x ", dl->attr);
+  for (int i = 0; i < 21; i++)
+    DPRINTF2("%c", dl->fname[i] == 0 ? '_' : dl->fname[i]);
+  DPRINTF2("\n");
+
+  //ディレクトリを開いてディスクリプタを得る
   int err;
-  if ((dir = FUNC_OPENDIR(unit, &err, path)) == DIR_BADDIR) {
-    switch (err) {
-    case ENOENT:
-      res->res = _DOSE_NODIR;    //ディレクトリが存在しない場合に_DOSE_NOENTを返すと正常動作しない
-      break;
-    default:
-      res->res = conv_errno(err);
-      break;
-    }
-    goto errout;
+  if ((dl->dir = FUNC_OPENDIR(unit, &err, dl->hostpath)) == DIR_BADDIR) {
+    return err;
   }
 
-  //ルートディレクトリかつボリューム名が必要な場合
-  if (isroot && (cmd->attr & 0x08) != 0 &&
-      w[0] == '?' && w[18] == '?') {    //検索するファイル名が*.*のとき
-    //ボリューム名を作る
-    dl->dirbuf = malloc(sizeof(struct dos_filesinfo));
-    dl->buflen = 1;
-    dl->dirbuf[0].atr = 0x08;   //ボリューム名
-    dl->dirbuf[0].time = dl->dirbuf[0].date = 0;
-    dl->dirbuf[0].filelen = 0;
+  *dlp = dl;
+  return 0;
+}
+
+int dl_readdir(dirlist_t *dl, void *v)
+{
+  TYPE_DIRENT *d;
+  struct dos_filesinfo *fi = (struct dos_filesinfo *)v;
+
+  if (dl->isfirst && dl->isroot && (dl->attr & 0x08) != 0 &&
+      dl->fname[0] == '?' && dl->fname[18] == '?') {    //検索するファイル名が*.*のとき
+    //ボリューム名エントリを作る
+    fi->atr = 0x08;   //ボリューム名
+    fi->time = fi->date = 0;
+    fi->filelen = 0;
     // ファイル名をSJISに変換する
-    char *dst_buf = dl->dirbuf[0].name;
-    size_t dst_len = sizeof(dl->dirbuf[0].name) - 2;
-    char *src_buf = path;
-    size_t src_len = strlen(path);
+    char *dst_buf = fi->name;
+    size_t dst_len = sizeof(fi->name) - 2;
+    char *src_buf = dl->hostpath;
+    size_t src_len = strlen(dl->hostpath);
     FUNC_ICONV_U2S(&src_buf, &src_len, &dst_buf, &dst_len);
     *dst_buf = '\0';
+    dl->isfirst = false;
+    return 1;
   }
 
+  dl->isfirst = false;
   //ディレクトリの一覧から属性とファイル名の条件に合うものを選ぶ
-  while (d = FUNC_READDIR(unit, NULL, dir)) {
+  while (d = FUNC_READDIR(dl->unit, NULL, dl->dir)) {
     char *childName = DIRENT_NAME(d);
 
-    if (isroot) {  //ルートディレクトリのとき
+    if (dl->isroot) {  //ルートディレクトリのとき
       if (strcmp(childName, ".") == 0 || strcmp(childName, "..") == 0) {  //.と..を除く
         continue;
       }
     }
 
     // ファイル名をSJISに変換する
-    char *dst_buf = res->file[0].name;
-    size_t dst_len = sizeof(res->file[0].name) - 1;
+    char *dst_buf = fi->name;
+    size_t dst_len = sizeof(fi->name) - 1;
     char *src_buf = childName;
     size_t src_len = strlen(childName);
     if (FUNC_ICONV_U2S(&src_buf, &src_len, &dst_buf, &dst_len) < 0) {
@@ -565,8 +565,8 @@ int op_files(int unit, uint8_t *cbuf, uint8_t *rbuf)
     }
     *dst_buf = '\0';
     uint8_t c;
-    for (int i = 0; i < sizeof(res->file[0].name); i++) {
-      if (!(c = res->file[0].name[i]))
+    for (int i = 0; i < sizeof(fi->name); i++) {
+      if (!(c = fi->name[i]))
         break;
       if (0x81 <= c && c <= 0x9f || 0xe0 <= c && c <= 0xef) {  //SJISの1バイト目
         i++;
@@ -583,7 +583,7 @@ int op_files(int unit, uint8_t *cbuf, uint8_t *rbuf)
     }
 
     //ファイル名を分解する
-    char *b = res->file[0].name;
+    char *b = fi->name;
     int k = strlen(b);
     int m = (b[k - 1] == '.' ? k :  //name.
              k >= 3 && b[k - 2] == '.' ? k - 2 :  //name.e
@@ -608,7 +608,7 @@ int op_files(int unit, uint8_t *cbuf, uint8_t *rbuf)
       int i;
       for (i = 0; i < 21; i++) {
         int c = w2[i];
-        int d = w[i];
+        int d = dl->fname[i];
         if (d != '?' && ('A' <= c && c <= 'Z' ? c | f : c) != d) {  //検索するファイル名の'?'以外の部分がマッチしない。SJISの2バイト目でなければ小文字化してから比較する
           break;
         }
@@ -621,95 +621,81 @@ int op_files(int unit, uint8_t *cbuf, uint8_t *rbuf)
 
     //属性、時刻、日付、ファイルサイズを取得する
     hostpath_t fullpath;
-    strcpy(fullpath, path);
+    strcpy(fullpath, dl->hostpath);
     int len = strlen(fullpath);
     if (len > 0 && fullpath[len - 1] != '/') {
       strncat(fullpath, "/", sizeof(fullpath) - 1);
     }
     strncat(fullpath, childName, sizeof(fullpath) - 1);
     TYPE_STAT st;
-    if (FUNC_STAT(unit, NULL, fullpath, &st) < 0) {  // ファイル情報を取得できなかった
+    if (FUNC_STAT(dl->unit, NULL, fullpath, &st) < 0) {  // ファイル情報を取得できなかった
       continue;
     }
     if (0xffffffffL < STAT_SIZE(&st)) {  //4GB以上のファイルは検索できないことにする
       continue;
     }
-    conv_statinfo(&st, &res->file[0]);
-    if ((res->file[0].atr & cmd->attr) == 0) {  //属性がマッチしない
+    conv_statinfo(&st, fi);
+    if ((fi->atr & dl->attr) == 0) {  //属性がマッチしない
       continue;
     }
 
-    //ファイル名リストに追加する
-    dl->dirbuf = realloc(dl->dirbuf, sizeof(struct dos_filesinfo) * (dl->buflen + 1));
-    memcpy(&dl->dirbuf[dl->buflen], &res->file[0], sizeof(struct dos_filesinfo));
-    dl->buflen++;
+    return 1;
   }
 
-  FUNC_CLOSEDIR(unit, NULL, dir);
+  dl_free(dl);
+  return 0;   // もうファイルがない
+}
 
-#ifdef CONFIG_DIRREVERSE
-  dl->bufcnt = dl->buflen;
-#endif
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-  for (int i = 0; i < dl->buflen; i++) {
-    DPRINTF2("%d %s\n", i, dl->dirbuf[i].name);
-  }
+int op_files(int unit, uint8_t *cbuf, uint8_t *rbuf)
+{
+  struct cmd_files *cmd = (struct cmd_files *)cbuf;
+  struct res_files *res = (struct res_files *)rbuf;
+  dirlist_t *dl;
 
-  //ファイル名リストの最初のエントリを返す
+  res->res = _DOSE_NOMORE;
 #if CONFIG_NFILEINFO > 1
-  int n = sizeof(res->file) / sizeof(res->file[0]);
-  n = n > cmd->num ? cmd->num : n;
-  for (int i = 0; i < n; i++) {
-#ifdef CONFIG_DIRREVERSE
-    if (dl->bufcnt > 0) {
-      memcpy(&res->file[i], &dl->dirbuf[--dl->bufcnt], sizeof(res->file));
-      res->num++;
-      res->res = 0;
-    }
-#else
-    if (dl->bufcnt < dl->buflen) {
-      memcpy(&res->file[i], &dl->dirbuf[dl->bufcnt++], sizeof(res->file));
-      res->num++;
-      res->res = 0;
-    }
+  res->num = 0;
 #endif
-      else {
+
+  int err = dl_opendir(&dl, unit, cmd);
+  if (err) {
+    switch (err) {
+    case ENOENT:
+      res->res = _DOSE_NODIR;    //ディレクトリが存在しない場合に_DOSE_NOENTを返すと正常動作しない
+      break;
+    default:
+      res->res = conv_errno(err);
       break;
     }
+    goto errout;
   }
-#else
-#ifdef CONFIG_DIRREVERSE
-  if (dl->bufcnt > 0) {
-    memcpy(&res->file[0], &dl->dirbuf[--dl->bufcnt], sizeof(res->file[0]));
-    res->res = 0;
-  }
-#else
-  if (dl->bufcnt < dl->buflen) {
-    memcpy(&res->file[0], &dl->dirbuf[dl->bufcnt++], sizeof(res->file[0]));
-    res->res = 0;
-  }
+
+  int n = CONFIG_NFILEINFO;
+#if CONFIG_NFILEINFO > 1
+  n = n > cmd->num ? cmd->num : n;
 #endif
+  
+  for (int i = 0; i < n; i++) {
+    if (dl_readdir(dl, &res->file[i]) == 0) {
+      break;
+    }
+#if CONFIG_NFILEINFO > 1
+    res->num++;
 #endif
+    res->res = 0;
+    DPRINTF1("(%d/%d) %s\n", i, n, res->file[i].name);
+  }
 
 errout:
 #if CONFIG_NFILEINFO > 1
-  DPRINTF1("FILES: 0x%08x 0x%02x %d %s -> ", cmd->filep, cmd->attr, cmd->num, path);
+  DPRINTF1("FILES: 0x%08x 0x%02x %d %s -> ", cmd->filep, cmd->attr, cmd->num, dl->hostpath);
 #else
-  DPRINTF1("FILES: 0x%08x 0x%02x %s -> ", cmd->filep, cmd->attr, path);
+  DPRINTF1("FILES: 0x%08x 0x%02x %s -> ", cmd->filep, cmd->attr, dl->hostpath);
 #endif
-  if (res->res)
-    DPRINTF1("%d\n", res->res);
-  else
-    DPRINTF1("(%d/%d) %s\n", dl->bufcnt, dl->buflen, res->file[0].name);
+  DPRINTF1("%d\n", res->res);
 
-#ifdef CONFIG_DIRREVERSE
-  if (dl->bufcnt <= 0)   //ファイル名リストが空
-#else
-  if (dl->bufcnt == dl->buflen)   //ファイル名リストが空
-#endif
-  {
-    dl_free(cmd->filep);
-  }
   return sizeof(*res);
 }
 
@@ -726,55 +712,30 @@ int op_nfiles(int unit, uint8_t *cbuf, uint8_t *rbuf)
   res->num = 0;
 #endif
 
+  if (dl = dl_alloc(cmd->filep, false)) {
+    int n = CONFIG_NFILEINFO;
+#if CONFIG_NFILEINFO > 1
+    n = n > cmd->num ? cmd->num : n;
+#endif
+
+    for (int i = 0; i < n; i++) {
+      if (dl_readdir(dl, &res->file[i]) == 0) {
+        break;
+      }
+#if CONFIG_NFILEINFO > 1
+      res->num++;
+#endif
+      res->res = 0;
+      DPRINTF1("(%d/%d) %s\n", i, n, res->file[i].name);
+    }
+  }
+
 #if CONFIG_NFILEINFO > 1
   DPRINTF1("NFILES: 0x%08x %d -> ", cmd->filep, cmd->num);
 #else
   DPRINTF1("NFILES: 0x%08x -> ", cmd->filep);
 #endif
-
-  if (dl = dl_alloc(cmd->filep, false)) {
-#if CONFIG_NFILEINFO > 1
-    int n = sizeof(res->file) / sizeof(res->file[0]);
-    n = n > cmd->num ? cmd->num : n;
-    for (int i = 0; i < n; i++) {
-#ifdef CONFIG_DIRREVERSE
-      memcpy(&res->file[i], &dl->dirbuf[--dl->bufcnt], sizeof(res->file));
-#else
-      memcpy(&res->file[i], &dl->dirbuf[dl->bufcnt++], sizeof(res->file));
-#endif
-      res->num++;
-      res->res = 0;
-      DPRINTF1("(%d/%d) %s\n", dl->bufcnt, dl->buflen, res->file[i].name);
-#ifdef CONFIG_DIRREVERSE
-      if (dl->bufcnt <= 0)   //もう残っているファイルがない
-#else
-      if (dl->bufcnt == dl->buflen)   //もう残っているファイルがない
-#endif
-      {
-        dl_free(cmd->filep);
-        break;
-      }
-    }
-#else
-#ifdef CONFIG_DIRREVERSE
-    memcpy(&res->file[0], &dl->dirbuf[--dl->bufcnt], sizeof(res->file[0]));
-#else
-    memcpy(&res->file[0], &dl->dirbuf[dl->bufcnt++], sizeof(res->file[0]));
-#endif
-    res->res = 0;
-    DPRINTF1("(%d/%d) %s\n", dl->bufcnt, dl->buflen, res->file[0].name);
-#ifdef CONFIG_DIRREVERSE
-    if (dl->bufcnt <= 0)   //もう残っているファイルがない
-#else
-    if (dl->bufcnt == dl->buflen)   //もう残っているファイルがない
-#endif
-    {
-      dl_free(cmd->filep);
-    }
-#endif
-  } else {
-    DPRINTF1("%d\n", res->res);
-  }
+  DPRINTF1("%d\n", res->res);
 
   return sizeof(*res);
 }
