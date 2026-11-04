@@ -1,0 +1,3 @@
+[submodule "libtsr"]
+	path = libtsr
+	url = https://github.com/yunkya2/libtsr-x68k.git
