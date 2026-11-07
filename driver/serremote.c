@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Yuichi Nakamura (@yunkya2)
+ * Copyright (c) 2023,2026 Yuichi Nakamura (@yunkya2)
  *
  * The MIT License (MIT)
  *
@@ -31,10 +31,18 @@
 #include <setjmp.h>
 #include <x68k/dos.h>
 #include <x68k/iocs.h>
+#include <x68k/tsr.h>
 
 #include <config.h>
 #include <x68kremote.h>
+#include "serremote.h"
 #include "remotedrv.h"
+
+//****************************************************************************
+// Human68k device header
+//****************************************************************************
+
+TSR_DEVICE(_DEV_REMOTE, CONFIG_DEVNAME, interrupt);
 
 //****************************************************************************
 // Global variables
@@ -43,6 +51,8 @@
 bool recovery = false;  //エラー回復モードフラグ
 int timeout = 500;      //コマンド受信タイムアウト(5sec)
 int resmode = 0;        //登録モード (0:常に登録 / 1:起動時にサーバと通信できたら登録)
+
+struct dos_dpb_remote dpbs[8];  //常駐するリモートDPB
 
 #ifdef DEBUG
 int debuglevel = 0;
@@ -53,11 +63,7 @@ int debuglevel = 0;
 //****************************************************************************
 
 #ifdef DEBUG
-char heap[1024];                // temporary heap for debug print
-void *_HSTA = heap;
-void *_HEND = heap + 1024;
-void *_PSP;
-
+TSR_HEAP(2048);
 void DPRINTF(int level, char *fmt, ...)
 {
   char buf[256];
@@ -192,19 +198,6 @@ void com_cmdres(void *wbuf, size_t wsize, void *rbuf, size_t rsize)
 }
 
 //****************************************************************************
-// Utility routine
-//****************************************************************************
-
-static int my_atoi(char *p)
-{
-  int res = 0;
-  while (*p >= '0' && *p <= '9') {
-    res = res * 10 + *p++ - '0';
-  }
-  return res;
-}
-
-//****************************************************************************
 // Device driver interrupt rountine
 //****************************************************************************
 
@@ -217,103 +210,4 @@ int com_timeout(struct dos_req_header *req)
   req->status = -1;
   recovery = true;
   return 0x1002;
-}
-
-int com_init(struct dos_req_header *req)
-{
-  int units = 1;
-#ifdef CONFIG_BOOTDRIVER
-  _iocs_b_print
-#else
-  _dos_print
-#endif
-    ("\r\nX68000 Serial Remote Drive Driver (version " GIT_REPO_VERSION ")\r\n");
-
-#ifdef CONFIG_BOOTDRIVER
-  int baudrate = 9600;
-  char *baudstr = "9600";
-  int bdset = 7;
-#else
-  int baudrate = 38400;
-  char *baudstr = "38400";
-  char *p = (char *)req->status;
-  p += strlen(p) + 1;
-  while (*p != '\0') {
-    if (*p == '/' || *p =='-') {
-      p++;
-      switch (*p | 0x20) {
-#ifdef DEBUG
-      case 'd':         // /D .. デバッグレベル増加
-        debuglevel++;
-        break;
-#endif
-      case 's':         // /s<speed> .. 通信速度設定
-        p++;
-        baudrate = my_atoi(p);
-        baudstr = p;
-        break;
-      case 'r':         // /r<mode> .. 登録モード
-        p++;
-        resmode = my_atoi(p);
-        break;
-      case 't':         // /t<timeout> .. タイムアウト設定
-        p++;
-        timeout = my_atoi(p) * 100;
-        if (timeout == 0)
-          timeout = 500;
-        break;
-      case 'u':         // /u<units> .. ユニット数設定
-        p++;
-        units = my_atoi(p);
-        if (units < 1 || units > 7)
-          units = 1;
-        break;
-      }
-    } else if (*p >= '0' && *p <= '9') {
-      baudrate = my_atoi(p);
-      baudstr = p;
-    }
-    p += strlen(p) + 1;
-  }
-
-  static const int bauddef[] = { 75, 150, 300, 600, 1200, 2400, 4800, 9600, 19200, 38400 };
-  int bdset = -1;
-  for (int i = 0; i < sizeof(bauddef) / sizeof(bauddef[0]); i++) {
-    if (baudrate == bauddef[i]) {
-      bdset = i;
-      break;
-    }
-  }
-  if (bdset < 0) {
-    bdset = 9;
-    baudstr = "38400";
-  }
-#endif
-
-  // stop 1 / nonparity / 8bit / nonxoff
-  _iocs_set232c(0x4c00 | bdset);
-
-#ifndef CONFIG_BOOTDRIVER
-  if (resmode != 0) {     // サーバが応答するか確認する
-    struct cmd_init cmd;
-    struct res_init res;
-    cmd.command = 0x00; /* init */
-    com_cmdres(&cmd, sizeof(cmd), &res, sizeof(res));
-    DPRINTF1("CHECK:\r\n");
-  }
-  resmode = 0;  // 応答を確認できたのでモードを戻す
-
-  _dos_print("ドライブ");
-  _dos_putchar('A' + *(char *)&req->fcb);
-  if (units > 1) {
-    _dos_print(":-");
-    _dos_putchar('A' + *(char *)&req->fcb + units - 1);
-  }
-  _dos_print(":でRS-232Cに接続したリモートドライブが利用可能です (");
-  _dos_print(baudstr);
-  _dos_print("bps)\r\n");
-#endif
-  DPRINTF1("Debug level: %d\r\n", debuglevel);
-
-  return units;
 }

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023,2024 Yuichi Nakamura (@yunkya2)
+ * Copyright (c) 2023,2024,2026 Yuichi Nakamura (@yunkya2)
  *
  * The MIT License (MIT)
  *
@@ -39,7 +39,6 @@
 // Global variables
 //****************************************************************************
 
-struct dos_req_header *reqheader;   // Human68kからのリクエストヘッダ
 jmp_buf jenv;                       // タイムアウト時のジャンプ先
 int unit_base = 0;                  // ユニット番号のベース値
 
@@ -206,10 +205,9 @@ struct fcache *fcache_alloc(uint32_t filep, bool new)
 // Device driver interrupt rountine
 //****************************************************************************
 
-int interrupt(void)
+int interrupt(struct dos_req_header *req, void *dev)
 {
   uint16_t err = 0;
-  struct dos_req_header *req = reqheader;
 
   if (setjmp(jenv)) {
     return com_timeout(req);
@@ -226,8 +224,6 @@ int interrupt(void)
     int r = com_init(req);
     if (r >= 0) {
       req->attr = r; /* Number of units */
-      extern char _end;
-      req->addr = &_end;
       return 0;
     } else {
       return -r;
@@ -664,10 +660,3 @@ okout_write:
 
   return err;
 }
-
-//****************************************************************************
-// Dummy program entry
-//****************************************************************************
-
-void _start(void)
-{}

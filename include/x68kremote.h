@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023,2024 Yuichi Nakamura (@yunkya2)
+ * Copyright (c) 2023,2024,2026 Yuichi Nakamura (@yunkya2)
  *
  * The MIT License (MIT)
  *
@@ -105,19 +105,6 @@ extern union remote_combuf *comp;
 #define dos_fcb_mode(fcb)   (((uint8_t *)(fcb))[14])
 #define dos_fcb_fpos(fcb)   (*(uint32_t *)(&((uint8_t *)(fcb))[6]))
 #define dos_fcb_size(fcb)   (*(uint32_t *)(&((uint8_t *)(fcb))[64]))
-
-struct dos_req_header {
-  uint8_t magic;       // +0x00.b  Constant (26)
-  uint8_t unit;        // +0x01.b  Unit number
-  uint8_t command;     // +0x02.b  Command code
-  uint8_t errl;        // +0x03.b  Error code low
-  uint8_t errh;        // +0x04.b  Error code high
-  uint8_t reserved[8]; // +0x05 .. +0x0c  not used
-  uint8_t attr;        // +0x0d.b  Attribute / Seek mode
-  void *addr;          // +0x0e.l  Buffer address
-  uint32_t status;     // +0x12.l  Bytes / Buffer / Result status
-  void *fcb;           // +0x16.l  FCB
-} __attribute__((packed, aligned(2)));
 
 struct dos_filesinfo {
   uint8_t dummy;

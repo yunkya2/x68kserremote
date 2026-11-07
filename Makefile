@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023 Yuichi Nakamura (@yunkya2)
+# Copyright (c) 2023,2026 Yuichi Nakamura (@yunkya2)
 #
 # The MIT License (MIT)
 #
@@ -21,7 +21,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-DRIVER = driver/SERREMOTE.SYS
+DRIVER = driver/serremote.x
 SERVICE = service/x68kremote.exe
 
 all: $(DRIVER) $(SERVICE)
@@ -34,6 +34,7 @@ $(SERVICE):
 
 clean:
 	(cd driver;make clean)
+	-$(MAKE) -C libtsr clean
 	-rm -rf build
 
 RELFILE := x68kserremote-$(shell git describe --tags --always)
@@ -44,7 +45,7 @@ release: all
 	mv README.txt build
 	cp $(DRIVER) build
 	cp $(SERVICE) build
-	(cd build; ../xdftool/xdftool.py c serremote.xdf SERREMOTE.SYS)
+	(cd build; ../xdftool/xdftool.py c serremote.xdf serremote.x)
 	(cd build; zip -r ../$(RELFILE).zip *)
 
 .PHONY: all clean release

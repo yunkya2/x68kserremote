@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Yuichi Nakamura (@yunkya2)
+ * Copyright (c) 2023,2026 Yuichi Nakamura (@yunkya2)
  *
  * The MIT License (MIT)
  *
@@ -28,7 +28,24 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <setjmp.h>
+#include <x68k/dos.h>
 #include <x68kremote.h>
+
+// Human68k device driver request header
+#ifndef _DOS_INTERNAL_H_
+struct dos_req_header {
+    uint8_t magic;              // +0x00.b Constant
+    uint8_t unit;               // +0x01.b Unit number
+    uint8_t command;            // +0x02.b Command code
+    uint8_t errl;               // +0x03.b Error code low
+    uint8_t errh;               // +0x04.b Error code high
+    uint8_t reserved[8];        // +0x05 .. +0x0c not used
+    uint8_t attr;               // +0x0d.b Attribute / Seek mode
+    void *addr;                 // +0x0e.l Buffer address
+    uint32_t status;            // +0x12.l Bytes / Buffer / Result status
+    void *fcb;                  // +0x16.l FCB
+} __attribute__((__packed__, __aligned__(2)));
+#endif
 
 #define DPRINTF1(...)  DPRINTF(1, __VA_ARGS__)
 #define DPRINTF2(...)  DPRINTF(2, __VA_ARGS__)
@@ -44,6 +61,8 @@ void DNAMEPRINT(void *n, bool full, char *head);
 
 extern jmp_buf jenv;
 extern int unit_base;
+
+int interrupt(struct dos_req_header *req, void *dev);
 
 void com_cmdres(void *wbuf, size_t wsize, void *rbuf, size_t rsize);
 int com_timeout(struct dos_req_header *req);

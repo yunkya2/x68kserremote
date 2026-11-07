@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2023 Yuichi Nakamura (@yunkya2)
+# Copyright (c) 2023,2026 Yuichi Nakamura (@yunkya2)
 #
 # The MIT License (MIT)
 #
@@ -30,23 +30,29 @@ RANLIB = $(CROSS)ranlib
 
 GIT_REPO_VERSION=$(shell git describe --tags --always)
 
-CFLAGS = -g -m68000 -I. -I../include -Os -DGIT_REPO_VERSION=\"$(GIT_REPO_VERSION)\"
-CFLAGS += -finput-charset=utf-8 -fexec-charset=cp932
+LIBTSR = ../libtsr
+CFLAGS = -g -m68000 -I. -I../include -I$(LIBTSR)/include -Os -DGIT_REPO_VERSION=\"$(GIT_REPO_VERSION)\"
 ASFLAGS = -m68000 -I.
 
 ifneq ($(DEBUG),)
 CFLAGS += -DDEBUG
 endif
 
-all: SERREMOTE.SYS
+all: serremote.x
 
-SERREMOTE.SYS: head.o serremote.o remotedrv.o
-	$(LD) -o $@ $^ -nostartfiles -s
+serremote.x: main.o tsr.o $(LIBTSR)/lib/libx68ktsr.a
+	$(LD) -o $@ main.o tsr.o -L$(LIBTSR)/lib -lx68ktsr -s -specs=nano.specs
+
+tsr.o: serremote.o remotedrv.o $(LIBTSR)/lib/libx68ktsr.a
+	$(LIBTSR)/bin/m68k-xelf-tsrgen -o $@ serremote.o remotedrv.o -u com_init
+
+$(LIBTSR)/lib/libx68ktsr.a:
+	$(MAKE) -C $(LIBTSR)
 
 vpath %.h ../include
 
-head.o:      config.h
-serremote.o: config.h x68kremote.h remotedrv.h
+main.o:      config.h x68kremote.h remotedrv.h serremote.h
+serremote.o: config.h x68kremote.h remotedrv.h serremote.h
 remotedrv.o: config.h x68kremote.h remotedrv.h
 
 %.o: %.c
@@ -56,6 +62,6 @@ remotedrv.o: config.h x68kremote.h remotedrv.h
 	$(AS) $(ASFLAGS) -c $<
 
 clean:
-	-rm -f *.o *.SYS *.elf*
+	-rm -f *.o *.x *.elf
 
 .PHONY: all clean
