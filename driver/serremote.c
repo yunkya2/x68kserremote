@@ -31,7 +31,9 @@
 #include <setjmp.h>
 #include <x68k/dos.h>
 #include <x68k/iocs.h>
+#ifndef CONFIG_BOOTDRIVER
 #include <x68k/tsr.h>
+#endif
 
 #include <config.h>
 #include <x68kremote.h>
@@ -42,7 +44,9 @@
 // Human68k device header
 //****************************************************************************
 
+#ifndef CONFIG_BOOTDRIVER
 TSR_DEVICE(_DEV_REMOTE, CONFIG_DEVNAME, interrupt);
+#endif
 
 //****************************************************************************
 // Global variables
@@ -203,9 +207,11 @@ void com_cmdres(void *wbuf, size_t wsize, void *rbuf, size_t rsize)
 
 int com_timeout(struct dos_req_header *req)
 {
+#ifndef CONFIG_BOOTDRIVER
   if (resmode == 1) {     // 起動時にサーバが応答しなかった
     _dos_print("リモートドライブサービスが応答しないため組み込みません\r\n");
   }
+#endif
   DPRINTF1("command timeout\r\n");
   req->status = -1;
   recovery = true;

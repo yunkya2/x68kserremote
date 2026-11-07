@@ -28,14 +28,18 @@
 #include <setjmp.h>
 #include <x68k/dos.h>
 #include <x68k/iocs.h>
+#ifndef CONFIG_BOOTDRIVER
 #include <x68k/tsr.h>
+#endif
 
 #include <config.h>
 #include <x68kremote.h>
 #include "serremote.h"
 #include "remotedrv.h"
 
+#ifndef CONFIG_BOOTDRIVER
 TSR_NO_ENVIRON();
+#endif
 
   //****************************************************************************
 // Global variables
@@ -50,6 +54,7 @@ static int units = 1;           //ユニット数
 // Utility routine
 //****************************************************************************
 
+#ifndef CONFIG_BOOTDRIVER
 static int my_atoi(char *p)
 {
   int res = 0;
@@ -104,6 +109,8 @@ static int parse_args(int argc, char **argv)
   return result;
 }
 
+#endif
+
 // RS-232Cの通信速度を設定する
 //  戻り値: 設定した通信速度の文字列
 static const char *setup_rs232c(void)
@@ -138,6 +145,7 @@ static void check_server(void)
   resmode = 0;  // 応答を確認できたのでモードを戻す
 }
 
+#ifndef CONFIG_BOOTDRIVER
 static void print_connected(int first, int last, const char *baudstr)
 {
   _dos_print("ドライブ");
@@ -185,6 +193,28 @@ static void print_resident_drives(tsr_device_t dev)
   _dos_print("\r\n");
 }
 
+#endif
+
+#ifdef CONFIG_BOOTDRIVER
+
+// SCSI BOOT ROMからの起動時の初期化処理
+int com_init(struct dos_req_header *req)
+{
+  extern char _end;
+  extern uint8_t bootpart;
+
+  setup_rs232c();
+  check_server();
+
+  // SCSI BOOT ROMから渡される「何番目のパーティションから起動するか」を
+  // Human68kのドライバ初期化処理に返す (これで起動ドライブが決まる)
+  *(char *)&req->fcb = bootpart;
+  req->addr = &_end;
+  return units;
+}
+
+#else
+
 // CONFIG.SYSからの組み込み時の初期化処理 (デバイス初期化コマンドから呼ばれる)
 int com_init(struct dos_req_header *req)
 {
@@ -203,6 +233,9 @@ int com_init(struct dos_req_header *req)
   return units;
 }
 
+#endif
+
+#ifndef CONFIG_BOOTDRIVER
 //****************************************************************************
 // Command line entry
 //****************************************************************************
@@ -258,3 +291,4 @@ int main(int argc, char **argv)
 
   tsr_keepdev(NULL, 0);
 }
+#endif

@@ -27,6 +27,7 @@ AS = $(CROSS)gcc
 LD = $(CROSS)gcc
 AR = $(CROSS)ar
 RANLIB = $(CROSS)ranlib
+OBJCOPY = $(CROSS)objcopy
 
 GIT_REPO_VERSION=$(shell git describe --tags --always)
 
@@ -56,12 +57,39 @@ serremote.o: config.h x68kremote.h remotedrv.h serremote.h
 remotedrv.o: config.h x68kremote.h remotedrv.h
 
 %.o: %.c
-	$(CC) $(CFLAGS) -c $<
+	$(CC) $(CFLAGS) -c -o $@ $<
 
 %.o: %.S
-	$(AS) $(ASFLAGS) -c $<
+	$(AS) $(ASFLAGS) -c -o $@ $<
+
+# リモートドライブを起動ドライブとするディスクイメージファイルを生成する
+#   make bootimage [HUMANSYS=<HUMAN.SYSのパス>]  -> serboot.hds
+HUMANSYS ?= HUMAN.SYS
+
+bootimage: serboot.hds
+
+serboot.hds: bootloader.bin serboot.bin
+	@test -f "$(HUMANSYS)" || { echo "$(HUMANSYS) が見つかりません (HUMANSYS=<HUMAN.SYSのパス> で指定できます)"; exit 1; }
+	./mkscsiimg.py $^ $(HUMANSYS) $@
+
+serboot.bin: serboot.sys
+	./fixupsys.py $< $@
+
+serboot.sys: bootdrv.o boot_main.o boot_serremote.o boot_remotedrv.o
+	$(LD) -o $@ $^ -nostartfiles -s
+
+bootdrv.o:        config.h
+boot_main.o:      config.h x68kremote.h remotedrv.h serremote.h
+boot_serremote.o: config.h x68kremote.h remotedrv.h serremote.h
+boot_remotedrv.o: config.h x68kremote.h remotedrv.h
+
+boot_%.o: %.c
+	$(CC) $(CFLAGS) -DCONFIG_BOOTDRIVER -c -o $@ $<
+
+bootloader.bin: bootloader.o
+	$(OBJCOPY) -O binary $< $@
 
 clean:
-	-rm -f *.o *.x *.elf
+	-rm -f *.o *.sys *.x *.elf* *.bin *.hds
 
-.PHONY: all clean
+.PHONY: all clean bootimage
