@@ -945,14 +945,14 @@ int op_read(int unit, uint8_t *cbuf, uint8_t *rbuf)
   ssize_t bytes = 0;
 
   if (!fi) {
-    res->len = _DOSE_BADF;
+    res->len = htobe16(_DOSE_BADF);
     goto errout;
   }
 
   int err;
   if (fi->pos != pos) {
     if (FUNC_LSEEK(unit, &err, fi->fd, pos, SEEK_SET) < 0) {
-      res->len = htobe32(conv_errno(err));
+      res->len = htobe16(conv_errno(err));
       goto errout;
     }
   }
@@ -982,7 +982,7 @@ int op_write(int unit, uint8_t *cbuf, uint8_t *rbuf)
   ssize_t bytes;
 
   if (!fi) {
-    res->len = _DOSE_BADF;
+    res->len = htobe16(_DOSE_BADF);
     goto errout;
   }
 
@@ -996,7 +996,7 @@ int op_write(int unit, uint8_t *cbuf, uint8_t *rbuf)
   } else {
     if (fi->pos != pos) {
       if (FUNC_LSEEK(unit, &err, fi->fd, pos, SEEK_SET) < 0) {
-        res->len = htobe32(conv_errno(err));
+        res->len = htobe16(conv_errno(err));
         goto errout;
       }
     }
@@ -1024,7 +1024,7 @@ int op_filedate(int unit, uint8_t *cbuf, uint8_t *rbuf)
 
   if (!fi) {
     res->date = 0xffff;
-    res->time = _DOSE_BADF;
+    res->time = htobe16(_DOSE_BADF);
     goto errout;
   }
 
@@ -1033,7 +1033,7 @@ int op_filedate(int unit, uint8_t *cbuf, uint8_t *rbuf)
     TYPE_STAT st;
     if (FUNC_FSTAT(unit, &err, fi->fd, &st) < 0) {
       res->date = 0xffff;
-      res->time = htobe32(conv_errno(err));
+      res->time = htobe16(conv_errno(err));
     } else {
       struct dos_filesinfo fi;
       conv_statinfo(&st, &fi);
@@ -1045,7 +1045,7 @@ int op_filedate(int unit, uint8_t *cbuf, uint8_t *rbuf)
     uint16_t date = be16toh(cmd->date);
     if (FUNC_FILEDATE(unit, &err, fi->fd, time, date) < 0) {
       res->date = 0xffff;
-      res->time = htobe32(conv_errno(err));
+      res->time = htobe16(conv_errno(err));
     } else {
       res->date = 0;
       res->time = 0;
@@ -1072,7 +1072,11 @@ int op_dskfre(int unit, uint8_t *cbuf, uint8_t *rbuf)
   res->res = 0;
 
   if (rootpath[unit] != NULL) {
-    FUNC_STATFS(unit, NULL, rootpath[unit], &total, &free);
+    int err;
+    if (FUNC_STATFS(unit, &err, rootpath[unit], &total, &free) < 0) {
+      res->res = htobe32(conv_errno(err));
+      return sizeof(*res);
+    }
     total = total > 0x7fffffff ? 0x7fffffff : total;
     free = free > 0x7fffffff ? 0x7fffffff : free;
     res->freeclu = htobe16(free / 32768);
