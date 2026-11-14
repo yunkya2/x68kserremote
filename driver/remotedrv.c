@@ -79,7 +79,7 @@ static union remote_combuf * const comp = &b;
 // Utility routine
 //****************************************************************************
 
-ssize_t send_read(uint32_t fcb, char *buf, uint32_t pos, size_t len)
+ssize_t send_read(int unit, uint32_t fcb, char *buf, uint32_t pos, size_t len)
 {
   struct cmd_read *cmd = &comp->cmd_read;
   struct res_read *res = &comp->res_read;
@@ -87,7 +87,7 @@ ssize_t send_read(uint32_t fcb, char *buf, uint32_t pos, size_t len)
 
   while (len > 0) {
     size_t size = len > sizeof(res->data) ? sizeof(res->data) : len;
-    cmd->command = 0x4c; /* read */
+    cmd->command = 0x0c | (unit << 5); /* read */
     cmd->fcb = (uint32_t)fcb;
     cmd->pos = pos;
     cmd->len = size;
@@ -110,7 +110,7 @@ ssize_t send_read(uint32_t fcb, char *buf, uint32_t pos, size_t len)
   return total;
 }
 
-ssize_t send_write(uint32_t fcb, char *buf, uint32_t pos, size_t len)
+ssize_t send_write(int unit, uint32_t fcb, char *buf, uint32_t pos, size_t len)
 {
   struct cmd_write *cmd = &comp->cmd_write;
   struct res_write *res = &comp->res_write;
@@ -118,7 +118,7 @@ ssize_t send_write(uint32_t fcb, char *buf, uint32_t pos, size_t len)
 
   do {
     size_t size = len > sizeof(cmd->data) ? sizeof(cmd->data) : len;
-    cmd->command = 0x4d; /* write */
+    cmd->command = 0x0d | (unit << 5); /* write */
     cmd->fcb = (uint32_t)fcb;
     cmd->pos = pos;
     cmd->len = size;
@@ -143,6 +143,7 @@ struct dcache {
   uint32_t pos;
   int16_t len;
   bool dirty;
+  uint8_t unit;
   uint8_t cache[CONFIG_DATASIZE];
 } dcache[CONFIG_NDCACHE];
 
@@ -165,7 +166,7 @@ int dcache_flash(uint32_t fcb, bool clean)
   for (int i = 0; i < CONFIG_NDCACHE; i++) {
     if (dcache[i].fcb == fcb) {
       if (dcache[i].dirty) {
-        if (send_write(dcache[i].fcb, dcache[i].cache, dcache[i].pos, dcache[i].len) < 0)
+        if (send_write(dcache[i].unit, dcache[i].fcb, dcache[i].cache, dcache[i].pos, dcache[i].len) < 0)
           res = -1;
         dcache[i].dirty = false;
       }
@@ -477,12 +478,13 @@ out_nfiles:
           break;
         // キャッシュサイズ未満の読み込みならキャッシュを充填
         dcache_flash((uint32_t)req->fcb, true);
-        d->len = send_read((uint32_t)req->fcb, d->cache, *pp, sizeof(d->cache));
+        d->len = send_read(req->command >> 5, (uint32_t)req->fcb, d->cache, *pp, sizeof(d->cache));
         if (d->len < 0) {
           size = -1;
           goto errout_read;
         }
         d->fcb = (uint32_t)req->fcb;
+        d->unit = req->command >> 5;
         d->pos = *pp;
         d->dirty = false;
       } while (d->len > 0);
@@ -490,7 +492,7 @@ out_nfiles:
 
     if (len > 0) {
       size_t rlen;
-      rlen = send_read((uint32_t)req->fcb, buf, *pp, len);
+      rlen = send_read(req->command >> 5, (uint32_t)req->fcb, buf, *pp, len);
       if (rlen < 0) {
         size = -1;
         goto errout_read;
@@ -529,6 +531,7 @@ errout_read:
         }
         // 書き込みデータをキャッシュに書く
         d->fcb = (uint32_t)req->fcb;
+        d->unit = req->command >> 5;
         d->pos = *pp;
         memcpy(d->cache, (char *)req->addr, len);
         d->len = len;
@@ -538,7 +541,7 @@ errout_read:
     }
 
     dcache_flash((uint32_t)req->fcb, false);
-    len = send_write((uint32_t)req->fcb, (char *)req->addr, *pp, (uint32_t)req->status);
+    len = send_write(req->command >> 5, (uint32_t)req->fcb, (char *)req->addr, *pp, (uint32_t)req->status);
     if (len == 0) {
       *sp = *pp;      //0バイト書き込み=truncateなのでFCBのファイルサイズをポインタ位置にする
     }
